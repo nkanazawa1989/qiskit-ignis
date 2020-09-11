@@ -23,3 +23,7 @@ from .expval import (expectation_value,
                      ExpectationValue,
                      ExpectationValueGenerator,
                      ExpectationValueAnalysis)
+
+from .mitigation import (MeasMitigation,
+                         MeasMitigationGenerator,
+                         MeasMitigationAnalysis)
