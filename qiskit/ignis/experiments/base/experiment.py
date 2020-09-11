@@ -40,7 +40,11 @@ class Experiment:
         self._generator = generator
         self._analysis = analysis
         self._job = job
-        self._analyzed = False
+
+    def run(self, backend: BaseBackend, **kwargs) -> any:
+        """Run an experiment and perform analysis"""
+        self.execute(backend, **kwargs)
+        return self.run_analysis()
 
     def execute(self, backend: BaseBackend, **kwargs) -> BaseJob:
         """Execute the experiment on a backend.
@@ -72,9 +76,7 @@ class Experiment:
                         qobj_header={'metadata': metadata},
                         **kwargs)
         self._job = backend.run(qobj)
-        self._analyzed = False
-
-        return self._job
+        return self
 
     @property
     def job(self):
@@ -87,7 +89,6 @@ class Experiment:
         if not isinstance(value, BaseJob):
             raise QiskitError("Invalid Job object.")
         self._job = value
-        self._analyzed = False
 
     @property
     def generator(self):
@@ -116,7 +117,6 @@ class Experiment:
         if not isinstance(value, Analysis):
             raise QiskitError("Invalid Analysis object")
         self._analysis = value
-        self._analyzed = False
 
     def run_analysis(self, **params):
         """Analyze the stored data.
@@ -124,11 +124,9 @@ class Experiment:
         Returns:
             any: the output of the analysis,
         """
-        if self._analyzed:
-            return self.analysis.result
+        self.analysis.clear_data()
         self.analysis.add_data(self._job)
         result = self.analysis.run(**params)
-        self._analyzed = True
         return result
 
     # Generator Methods
