@@ -12,14 +12,16 @@
 
 """Special data types for calibration module."""
 
-from typing import List, NamedTuple, Dict, Any, Union, NewType, Callable
+from enum import Enum
+from typing import List, Dict, Any, Union, NewType, Tuple
 
 from qiskit.circuit import QuantumCircuit, Parameter
-from enum import Enum
-
 
 # All data types that can be accepted as parameter
 ParamValue = NewType('ParamValue', Union[int, float, Parameter])
+
+# Set of circuit and metadata
+Program = NewType('Program', Tuple[List[QuantumCircuit], List[Dict[str, Any]]])
 
 
 class SingleQubitAtomicPulses(Enum):

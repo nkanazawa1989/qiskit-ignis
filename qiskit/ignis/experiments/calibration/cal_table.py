@@ -104,9 +104,23 @@ class AtomicGate:
 
 class CalibrationDataTable:
 
-    def __init__(self):
+    def __init__(self,
+                 backend_name: str,
+                 num_qubits: int):
         """Create new table."""
         self._map = defaultdict(lambda: defaultdict(AtomicGate))
+        self._backend_name = backend_name
+        self._num_qubits = num_qubits
+
+    @property
+    def backend_name(self):
+        """Return backend name."""
+        return self._backend_name
+
+    @property
+    def num_qubits(self):
+        """Return number of qubits of this system."""
+        return self._num_qubits
 
     def add(self,
             instruction: str,
@@ -169,7 +183,7 @@ class CalibrationDataTable:
     def get_properties(self,
                        instruction: str,
                        qubits: Union[int, Iterable[int]]
-                       ) -> Union[None, List[Parameter]]:
+                       ) -> Union[None, Dict[str, types.ParamValue]]:
         """Get atomic gate properties from table."""
         qubits = CalibrationDataTable._to_tuple(qubits)
 
@@ -181,11 +195,14 @@ class CalibrationDataTable:
     def parametrize(self,
                     instruction: str,
                     qubits: Union[int, Iterable[int]],
-                    param_name: str) -> Parameter:
+                    param_name: str) -> Union[None, Parameter]:
         """Parametrize table item and return parameter handler."""
         qubits = CalibrationDataTable._to_tuple(qubits)
 
-        return self._map[instruction][qubits].parametrize(param_name=param_name)
+        if self.has(instruction, qubits):
+            return self._map[instruction][qubits].parametrize(param_name=param_name)
+
+        return None
 
     @classmethod
     def _to_tuple(cls, qubits: Union[int, Iterable[int]]):

@@ -19,9 +19,14 @@ from qiskit.ignis.experiments.calibration import cal_table, types
 class FakeDatabase:
     """Fake calibration database."""
 
-    def __init__(self, num_qubits: int):
+    def __init__(self,
+                 backend_name: str,
+                 num_qubits: int):
         """Create new database."""
-        self._table = cal_table.CalibrationDataTable()
+        self._table = cal_table.CalibrationDataTable(
+            backend_name=backend_name,
+            num_qubits=num_qubits
+        )
         self._num_qubits = num_qubits
 
         # create single qubit gates

@@ -10,9 +10,8 @@
 # copyright notice, and modified files need to carry a notice indicating
 # that they have been altered from the originals.
 
-"""Data source to generate schedule."""
+"""Qiskit Ignis calibration methods for single qubit."""
 
-from qiskit.ignis.experiments.base import Generator, Experiment
-
-
-class RoughAmplitudeCalibration
+from qiskit.ignis.experiments.calibration.cal_library.basic_1q import (
+    RoughAmplitudeCalibration
+)

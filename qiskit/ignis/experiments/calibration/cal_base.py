@@ -12,76 +12,121 @@
 
 """Qiskit Ignis calibration module."""
 
+import uuid
 from copy import deepcopy
-from typing import Union, List, Optional, Dict, Iterable, Any
+from typing import Union, List, Optional, Dict, Iterable, Callable
 
-from qiskit import QuantumCircuit
+from qiskit import QuantumCircuit, transpile, schedule, assemble
 from qiskit.circuit import Parameter
-from qiskit.ignis.experiments.base import Generator, Experiment, Analysis
+from qiskit.ignis.experiments.base import Generator, Experiment
 from qiskit.ignis.experiments.calibration.cal_table import CalibrationDataTable
 from qiskit.ignis.experiments.calibration.exceptions import CalExpError
-from collections import defaultdict
+from qiskit.providers import BaseBackend
+from qiskit.providers import BaseJob
 
 
-class CalibrationExperiment(Experiment):
+class BaseCalibrationExperiment(Experiment):
+    """An experiment class for a calibration experiment."""
 
-    def __init__(self,
-                 cal_table: CalibrationDataTable,
+    def execute(self, backend: BaseBackend, **kwargs) -> BaseJob:
+        """Execute the experiment on a backend.
+​
+        TODO: Add transpiler & scheduler options
 
-                 generator: Optional[Generator] = None,
-                 analysis: Optional[Analysis] = None,
-                 job: Optional = None):
+        Args:
+            backend: backend to run experiment on.
+            kwargs: kwargs for assemble method.
+​
+        Returns:
+            BaseJob: the experiment job.
+        """
+        # check backend consistency
+        if backend.name() != self.generator.table.backend_name:
+            raise CalExpError('Executing on the wrong backend. '
+                              'Pulse are generated based on the calibration table of {back1}, '
+                              'but experiments are running on {back2}.'
+                              ''.format(back1=self.generator.table.backend_name,
+                                        back2=backend.name()))
+
+        # Get circuits and metadata
+        exp_id = str(uuid.uuid4())
+        circuits = transpile(self.generator.circuits(),
+                             backend=backend,
+                             initial_layout=self.generator.qubits)
+        scheds = schedule(circuits, backend=backend)
+        metadata = self.generator.metadata()
+
+        for meta in metadata:
+            meta['name'] = self.generator.name
+            meta['exp_id'] = exp_id
+            meta['qubits'] = self.generator.qubits
+
+        return scheds, metadata
+
+        # # Assemble qobj and submit to backend
+        # qobj = assemble(scheds,
+        #                 backend=backend,
+        #                 qobj_header={'metadata': metadata},
+        #                 **kwargs)
+        # self._job = backend.run(qobj)
+        # return self
 
 
+class BaseCalibrationGenerator(Generator):
+    """A generator class for calibration circuit generation.
 
-
-
-
-class PulseGenerator(Generator):
-    """A generator class for a schedule based circuits."""
+    # TODO support simultaneous calibration
+    """
     def __init__(self,
                  cal_name: str,
-                 num_qubits: int,
-                 cal_generator: Generator,
-                 cal_table: CalibrationDataTable):
+                 target_qubits: Union[int, List[int]],
+                 cal_generator: Callable,
+                 table: CalibrationDataTable,
+                 **kwargs):
         """Create new high level generator for calibration.
 
         Args:
             cal_name: Name of this calibration.
-            num_qubits: Number of qubits in the target quantum processor.
+            target_qubits: Target qubit of this calibration.
             cal_generator: Generator of calibration circuit.
-            cal_table: Table of calibration data.
+            table: Table of calibration data.
         """
-        self._cal_table = cal_table
-        self._cal_generator = cal_generator
+        try:
+            self.target_qubits = list(target_qubits)
+        except TypeError:
+            self.target_qubits = [target_qubits]
 
+        super().__init__(name=cal_name, qubits=target_qubits)
+        self._table = table
+
+        self._defined_parameters = set()
         self._circuits = []
         self._metadata = []
 
-        # parameter scans
-        self._defined_parameters = set()
-        self._assigned_circuits = []
-        self._assigned_metadata = []
+        temp_circs, metadata = cal_generator(
+            name=self.name,
+            table=self._table,
+            target_qubits=target_qubits,
+            **kwargs
+        )
+        circuits = []
+        for temp_circ in temp_circs:
+            # store parameters in generated circuits
+            self._defined_parameters.update(temp_circ.parameters)
+            circuits.append(self._bind_calibration(temp_circ))
 
-        super().__init__(name=cal_name, qubits=num_qubits)
+        # validation
+        if len(circuits) != len(metadata):
+            raise CalExpError('Number of circuits and metadata are not identical.'
+                              '{}!={}'.format(len(circuits), len(metadata)))
 
-        # reset qubit
-        self.qubits = []
+        self._unassigned_circuits = circuits
+        self._unassigned_metadata = metadata
 
     @property
-    def cal_table(self) -> CalibrationDataTable:
-        """Return calibration data table."""
-        return self._cal_table
-
-    @property
-    def qubits(self) -> List[int]:
-        """Return the qubits for this experiment."""
-        return self._qubits
-
-    @qubits.setter
-    def qubits(self, value: Iterable[int]):
-        """Set the qubits for this experiment. Note that this is physical qubit."""
-        self._qubits = list(value)
+    def table(self):
+        """Return calibration table."""
+        return self._table
 
     def _bind_calibration(self, circ: QuantumCircuit) -> QuantumCircuit:
         """Bind calibration to circuit.
@@ -97,53 +142,20 @@ class PulseGenerator(Generator):
         # add calibrations for custom pulse gate
         for inst, qubits, clbits in circ.data:
             inst_name = inst.name
-            qinds = [qubit.index for qubit in qubits]
 
-            if self._cal_table.has(inst_name, qinds):
+            # qinds should be physical qubit index, otherwise transpiler cannot find entry.
+            qinds = [self.target_qubits[qubit.index] for qubit in qubits]
+
+            if self._table.has(inst_name, qinds):
                 # add new calibration entry if the key is found in the calibration table
                 circ.add_calibration(
                     gate=inst_name,
                     qubits=qinds,
-                    schedule=self._cal_table.get_schedule(inst_name, qinds),
-                    params=self._cal_table.get_parameters(inst_name, qinds)
+                    schedule=self._table.get_schedule(inst_name, qinds),
+                    params=self._table.get_parameters(inst_name, qinds)
                 )
 
         return circ
-
-    def add_experiment(self, qubits: Union[int, List[int]]):
-        """Generate calibration experiment for specified subset of qubits.
-
-        Args:
-            qubits: List of target qubit subset for this calibration.
-        """
-
-        # TODO:
-        #  allow this to create simultaneous calibration for multiple subset qubits
-        #  by calling this multiple times with different qubits kwarg.
-
-        if isinstance(qubits, int):
-            qubits = [qubits]
-
-        self._cal_generator.qubits = qubits
-
-        for temp_circ in self._cal_generator.circuits():
-            # store parameters in generated circuits
-            self._defined_parameters.update(temp_circ.parameters)
-
-            # generate physical circuit
-            circ = QuantumCircuit(self.num_qubits, self.num_qubits)
-            circ.compose(temp_circ, qubits=qubits, inplace=True)
-            self._circuits.append(self._bind_calibration(circ))
-
-        self._metadata.extend(self._cal_generator.metadata())
-
-        # validation
-        if len(self._circuits) != len(self._metadata):
-            raise CalExpError('Number of circuits and metadata are not identical.'
-                              '{}!={}'.format(len(self._circuits), len(self._metadata)))
-
-        # add this qubit subset
-        self.qubits = set(self.qubits + qubits)
 
     def assign_parameters(self,
                           parameters: Dict[Union[str, Parameter], Iterable[Union[int, float]]]):
@@ -152,23 +164,23 @@ class PulseGenerator(Generator):
         If length of bind values are different, scan is limited to the parameter
         with the shortest length.
         """
-        self._assigned_circuits.clear()
-        self._assigned_metadata.clear()
+        self._circuits.clear()
+        self._metadata.clear()
 
         # convert keys to string. parameter names in calibration should be unique.
         str_parameters = {}
-        for param, values in parameters:
+        for param, values in parameters.items():
             if isinstance(param, str):
                 str_parameters[param] = values
             else:
                 str_parameters[param.name] = values
 
-        for circ, meta in zip(self._circuits, self._metadata):
+        for circ, meta in zip(self._unassigned_circuits, self._unassigned_metadata):
             active_params = [param for param in circ.parameters if param.name in str_parameters]
             # nothing to bind
             if not active_params:
-                self._assigned_circuits.append(circ)
-                self._assigned_metadata.append(meta)
+                self._circuits.append(circ)
+                self._metadata.append(meta)
                 continue
 
             # generate parameter bind
@@ -176,39 +188,21 @@ class PulseGenerator(Generator):
             for scan_vals in zip(*active_scans):
                 bind_dict = dict(zip(active_params, scan_vals))
                 temp_meta = deepcopy(meta)
-                temp_meta.update(bind_dict)
-                self._assigned_circuits.append(circ.assign_parameters(bind_dict, inplace=False))
-                self._assigned_metadata.append(temp_meta)
+                temp_meta.update({param.name: val for param, val in bind_dict.items()})
 
-    def circuits(self) -> List[QuantumCircuit]:
-        """Generate a list of experiment circuits."""
-        return self._assigned_circuits
-
-    def _extra_metadata(self) -> List[Dict[str, Any]]:
-        """Generate a list of experiment circuits metadata."""
-        return self._assigned_metadata
-
-
-class CalSubsetGenerator(Generator):
-    """Generator of calibration subset."""
-    N_CAL_QUBITS = 1
-
-    def __init__(self,
-                 parent: PulseGenerator,
-                 meas_basis: Optional[List[str]] = None):
-        """Initialize generator."""
-        self._parent = parent
-        self._meas_basis = meas_basis
-
-        super().__init__(name=self._parent.name, qubits=self.N_CAL_QUBITS)
+                # TODO remove this deepcopy, currently original calibration entry
+                #  is overwritten and cannot combine parameter to each
+                temp_circ = deepcopy(circ)
+                self._circuits.append(temp_circ.assign_parameters(bind_dict, inplace=False))
+                self._metadata.append(temp_meta)
 
     def circuits(self) -> List[QuantumCircuit]:
         """Return a list of experiment circuits."""
-        raise NotImplementedError
+        return self._circuits
 
     def _extra_metadata(self) -> List[Dict[str, any]]:
         """Generate a list of experiment metadata dicts."""
-        raise NotImplementedError
+        return self._metadata
 
 
 class CalibrationCircuit:
