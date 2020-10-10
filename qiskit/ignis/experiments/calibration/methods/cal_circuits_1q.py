@@ -15,70 +15,80 @@
 from typing import Optional, List
 
 from qiskit import circuit
-from qiskit.ignis.experiments.calibration import cal_table, types
-from qiskit.ignis.experiments.calibration.cal_base import CalibrationCircuit as Calib
+from qiskit.ignis.experiments.calibration import cal_table, cal_builder, types
+from qiskit.ignis.experiments.calibration.exceptions import CalExpError
+from qiskit.ignis.experiments.calibration.types import SingleQubitAtomicPulses as Insts
 
 
 def rabi(
         name: str,
         table: cal_table.CalibrationDataTable,
         target_qubits: List[int],
-        meas_basis: Optional[str] = 'z') -> types.Program:
+        meas_basis: Optional[str] = 'z') -> types.CalProg:
     """Generate Rabi circuit."""
-    with Calib(name=name, n_qubits=1, meas_basis=meas_basis) as circ:
-        circ.append(table.get_gate(
-            instruction=types.SingleQubitAtomicPulses.STIM.value,
-            qubits=target_qubits
-        ), [0])
+    if len(target_qubits) != 1:
+        raise CalExpError(
+            'Invalid number of qubits = {} is specified.'
+            'This experiment requires 1 qubit.'.format(len(target_qubits)))
+
+    with cal_builder.build(name=name,
+                           qubits=target_qubits,
+                           table=table,
+                           meas_basis=meas_basis) as circ:
+        cal_builder.atomic_gate(name=Insts.STIM.value, qubits=target_qubits)
 
     meta = {
         'generator': 'rabi',
         'meas_basis': meas_basis
     }
 
-    return [circ], [meta]
+    return types.CalProg(circuits=[circ], metadata=[meta])
 
 
 def ramsey_xy(
         name: str,
         table: cal_table.CalibrationDataTable,
         target_qubits: List[int],
-        meas_basis: Optional[str] = 'z') -> types.Program:
+        meas_basis: Optional[str] = 'z') -> types.CalProg:
     """Generate Ramsey circuit."""
-    with Calib(name=name, n_qubits=1, meas_basis=meas_basis) as circ_x:
-        circ_x.append(table.get_gate(
-            instruction=types.SingleQubitAtomicPulses.X90P.value,
-            qubits=target_qubits
-        ), [0])
-        circ_x.delay(circuit.Parameter('delay'), unit='ns', qarg=[0])
-        circ_x.append(table.get_gate(
-            instruction=types.SingleQubitAtomicPulses.X90P.value,
-            qubits=target_qubits
-        ), [0])
+    if len(target_qubits) != 1:
+        raise CalExpError(
+            'Invalid number of qubits = {} is specified.'
+            'This experiment requires 1 qubit.'.format(len(target_qubits)))
 
-    with Calib(name=name, n_qubits=1, meas_basis=meas_basis) as circ_y:
-        circ_y.append(table.get_gate(
-            instruction=types.SingleQubitAtomicPulses.X90P.value,
-            qubits=target_qubits
-        ), [0])
-        circ_y.delay(circuit.Parameter('delay'), unit='ns', qarg=[0])
-        circ_y.append(table.get_gate(
-            instruction=types.SingleQubitAtomicPulses.Y90P.value,
-            qubits=target_qubits
-        ), [0])
+    delay_param = circuit.Parameter('delay')
 
-        meta_x = {
-            'generator': 'ramsey',
-            'meas_basis': meas_basis,
-            'quad': 'x'
-        }
-        meta_y = {
-            'generator': 'ramsey',
-            'meas_basis': meas_basis,
-            'quad': 'y'
-        }
+    with cal_builder.build(name=name,
+                           qubits=target_qubits,
+                           table=table,
+                           meas_basis=meas_basis) as circ_x:
+        cal_builder.atomic_gate(name=Insts.X90P.value, qubits=target_qubits)
+        circ_x.delay(delay_param, unit='ns', qarg=[0])
+        cal_builder.atomic_gate(name=Insts.X90P.value, qubits=target_qubits)
 
-    return [circ_x, circ_y], [meta_x, meta_y]
+    with cal_builder.build(name=name,
+                           qubits=target_qubits,
+                           table=table,
+                           meas_basis=meas_basis) as circ_y:
+        cal_builder.atomic_gate(name=Insts.X90P.value, qubits=target_qubits)
+        circ_y.delay(delay_param, unit='ns', qarg=[0])
+        cal_builder.atomic_gate(name=Insts.Y90P.value, qubits=target_qubits)
+
+    meta_x = {
+        'generator': 'ramsey',
+        'meas_basis': meas_basis,
+        'quad': 'x'
+    }
+    meta_y = {
+        'generator': 'ramsey',
+        'meas_basis': meas_basis,
+        'quad': 'y'
+    }
+
+    return types.CalProg(
+        circuits=[circ_x, circ_y],
+        metadata=[meta_x, meta_y]
+    )
 
 
 def amp_error_amplification(
@@ -86,20 +96,23 @@ def amp_error_amplification(
         table: cal_table.CalibrationDataTable,
         target_qubits: List[int],
         n_reps: List[int],
-        meas_basis: Optional[str] = 'z') -> types.Program:
+        meas_basis: Optional[str] = 'z') -> types.CalProg:
     """Generate ping-pong circuit."""
+    if len(target_qubits) != 1:
+        raise CalExpError(
+            'Invalid number of qubits = {} is specified.'
+            'This experiment requires 1 qubit.'.format(len(target_qubits)))
+
     cal_circs = []
     for n_rep in n_reps:
-        with Calib(name=name, n_qubits=1, meas_basis=meas_basis) as circ:
-            circ.append(table.get_gate(
-                instruction=types.SingleQubitAtomicPulses.X90P.value,
-                qubits=target_qubits
-            ), [0])
+        with cal_builder.build(name=name,
+                               qubits=target_qubits,
+                               table=table,
+                               meas_basis=meas_basis) as circ:
+            cal_builder.atomic_gate(name=Insts.X90P.value, qubits=target_qubits)
+            # repeat pi pulses
             for _ in range(n_rep):
-                circ.append(table.get_gate(
-                    instruction=types.SingleQubitAtomicPulses.XP.value,
-                    qubits=target_qubits
-                ), [0])
+                cal_builder.atomic_gate(name=Insts.XP.value, qubits=target_qubits)
         cal_circs.append(circ)
 
     metadata = []
@@ -111,4 +124,4 @@ def amp_error_amplification(
         }
         metadata.append(meta)
 
-    return cal_circs, metadata
+    return types.CalProg(circuits=cal_circs, metadata=metadata)

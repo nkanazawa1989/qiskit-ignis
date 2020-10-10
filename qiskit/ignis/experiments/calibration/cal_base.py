@@ -103,59 +103,59 @@ class BaseCalibrationGenerator(Generator):
         self._circuits = []
         self._metadata = []
 
-        temp_circs, metadata = cal_generator(
+        cal_prog = cal_generator(
             name=self.name,
             table=self._table,
             target_qubits=target_qubits,
             **kwargs
         )
-        circuits = []
-        for temp_circ in temp_circs:
-            # store parameters in generated circuits
+
+        # store parameters in generated circuits
+        for temp_circ in cal_prog.circuits:
             self._defined_parameters.update(temp_circ.parameters)
-            circuits.append(self._bind_calibration(temp_circ))
 
         # validation
-        if len(circuits) != len(metadata):
-            raise CalExpError('Number of circuits and metadata are not identical.'
-                              '{}!={}'.format(len(circuits), len(metadata)))
+        if len(cal_prog.circuits) != len(cal_prog.metadata):
+            raise CalExpError(
+                'Number of circuits and metadata are not identical.'
+                '{}!={}'.format(len(cal_prog.circuits), len(cal_prog.metadata)))
 
-        self._unassigned_circuits = circuits
-        self._unassigned_metadata = metadata
+        self._unassigned_circuits = cal_prog.circuits
+        self._unassigned_metadata = cal_prog.metadata
 
     @property
     def table(self):
         """Return calibration table."""
         return self._table
 
-    def _bind_calibration(self, circ: QuantumCircuit) -> QuantumCircuit:
-        """Bind calibration to circuit.
-
-        Note:
-            Calibration circuit is agnostic to actual qubit until this method is called.
-        """
-
-        # TODO:
-        #  replace u1, u2, u3 and cx with generated schedules from cal_table.
-        #  this requires synchronization of channel frames thus compiler is required.
-
-        # add calibrations for custom pulse gate
-        for inst, qubits, clbits in circ.data:
-            inst_name = inst.name
-
-            # qinds should be physical qubit index, otherwise transpiler cannot find entry.
-            qinds = [self.target_qubits[qubit.index] for qubit in qubits]
-
-            if self._table.has(inst_name, qinds):
-                # add new calibration entry if the key is found in the calibration table
-                circ.add_calibration(
-                    gate=inst_name,
-                    qubits=qinds,
-                    schedule=self._table.get_schedule(inst_name, qinds),
-                    params=self._table.get_parameters(inst_name, qinds)
-                )
-
-        return circ
+    # def _bind_calibration(self, circ: QuantumCircuit) -> QuantumCircuit:
+    #     """Bind calibration to circuit.
+    #
+    #     Note:
+    #         Calibration circuit is agnostic to actual qubit until this method is called.
+    #     """
+    #
+    #     # TODO:
+    #     #  replace u1, u2, u3 and cx with generated schedules from cal_table.
+    #     #  this requires synchronization of channel frames thus compiler is required.
+    #
+    #     # add calibrations for custom pulse gate
+    #     for inst, qubits, clbits in circ.data:
+    #         inst_name = inst.name
+    #
+    #         # qinds should be physical qubit index, otherwise transpiler cannot find entry.
+    #         qinds = [self.target_qubits[qubit.index] for qubit in qubits]
+    #
+    #         if self._table.has(inst_name, qinds):
+    #             # add new calibration entry if the key is found in the calibration table
+    #             circ.add_calibration(
+    #                 gate=inst_name,
+    #                 qubits=qinds,
+    #                 schedule=self._table.get_schedule(inst_name, qinds),
+    #                 params=self._table.get_parameters(inst_name, qinds)
+    #             )
+    #
+    #     return circ
 
     def assign_parameters(self,
                           parameters: Dict[Union[str, Parameter], Iterable[Union[int, float]]]):
@@ -177,6 +177,7 @@ class BaseCalibrationGenerator(Generator):
 
         for circ, meta in zip(self._unassigned_circuits, self._unassigned_metadata):
             active_params = [param for param in circ.parameters if param.name in str_parameters]
+
             # nothing to bind
             if not active_params:
                 self._circuits.append(circ)
@@ -189,11 +190,7 @@ class BaseCalibrationGenerator(Generator):
                 bind_dict = dict(zip(active_params, scan_vals))
                 temp_meta = deepcopy(meta)
                 temp_meta.update({param.name: val for param, val in bind_dict.items()})
-
-                # TODO remove this deepcopy, currently original calibration entry
-                #  is overwritten and cannot combine parameter to each
-                temp_circ = deepcopy(circ)
-                self._circuits.append(temp_circ.assign_parameters(bind_dict, inplace=False))
+                self._circuits.append(circ.assign_parameters(bind_dict, inplace=False))
                 self._metadata.append(temp_meta)
 
     def circuits(self) -> List[QuantumCircuit]:
@@ -203,51 +200,3 @@ class BaseCalibrationGenerator(Generator):
     def _extra_metadata(self) -> List[Dict[str, any]]:
         """Generate a list of experiment metadata dicts."""
         return self._metadata
-
-
-class CalibrationCircuit:
-    def __init__(self,
-                 name: str,
-                 n_qubits: int,
-                 meas_basis: Optional[List[str]] = None):
-
-        if isinstance(meas_basis, str):
-            meas_basis = [meas_basis]
-
-        self._circuit = QuantumCircuit(n_qubits, n_qubits, name=name)
-        self._meas_basis = meas_basis or ['z'] * n_qubits
-
-        # validation
-        if len(self._meas_basis) != n_qubits:
-            raise CalExpError('Number of measurement basis is not '
-                              'identical to the number of qubits.')
-
-    def __enter__(self):
-        """Add calibration and LO initialization sequence at the beginning of circuit.
-
-        Implicitly assume the mapping of qubit and channel with the same index.
-        """
-
-        # TODO:
-        #  set frequency gate is required to ensure constant LO frequency during experiment.
-        #  this info should be globally defined for each channel,
-        #  thus different data model is required.
-
-        return self._circuit
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """Insert measurement in specified measurement basis and add calibration."""
-        from qiskit.converters.circuit_to_dag import circuit_to_dag
-
-        # add measurement to active qubits with arbitrary Pauli basis
-        dag = circuit_to_dag(self._circuit)
-        active_qubits = [qubit for qubit in self._circuit.qubits if qubit not in dag.idle_wires()]
-        self._circuit.barrier(*active_qubits)
-        for qubit in active_qubits:
-            if self._meas_basis[qubit.index] == 'Y':
-                self._circuit.sdg(qubit)
-            if self._meas_basis[qubit.index] in ['X', 'Y']:
-                self._circuit.h(qubit)
-            self._circuit.measure(qubit.index, qubit.index)
-
-        return None
