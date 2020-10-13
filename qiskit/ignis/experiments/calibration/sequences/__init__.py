@@ -12,6 +12,8 @@
 
 """Qiskit Ignis calibration methods for single qubit."""
 
-from qiskit.ignis.experiments.calibration.methods.basic_1q import (
-    RoughAmplitudeCalibration
+from qiskit.ignis.experiments.calibration.sequences.sequences_1q import (
+    amp_error_amplification,
+    rabi,
+    ramsey_xy
 )

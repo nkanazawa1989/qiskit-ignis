@@ -10,8 +10,21 @@
 # copyright notice, and modified files need to carry a notice indicating
 # that they have been altered from the originals.
 
-"""Qiskit Ignis calibration methods for single qubit."""
+from typing import Optional, Any
 
-from qiskit.ignis.experiments.calibration.methods.basic_1q import (
-    RoughAmplitudeCalibration
-)
+from qiskit.ignis.experiments.calibration import workflow
+
+
+class Kernel(workflow.AnalysisRoutine):
+    PREV_NODES = ()
+
+    def process(self, data: Any, shots: int):
+        return data
+
+
+class SystemKernel(Kernel):
+    PREV_NODES = ()
+
+    def __init__(self, name: Optional[str] = None):
+        self.name = name
+        super().__init__()

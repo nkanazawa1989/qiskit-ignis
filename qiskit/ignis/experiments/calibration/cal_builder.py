@@ -74,18 +74,13 @@ class _CalibrationBuilder:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Insert measurement in specified measurement basis and add calibration."""
-        from qiskit.converters.circuit_to_dag import circuit_to_dag
-
-        # add measurement to active qubits with arbitrary Pauli basis
-        dag = circuit_to_dag(self._circuit)
-        active_qubits = [qubit for qubit in self._circuit.qubits if qubit not in dag.idle_wires()]
-        self._circuit.barrier(*active_qubits)
-        for qubit in active_qubits:
-            if self._meas_basis[qubit.index] == 'Y':
+        self._circuit.barrier(self._qubits)
+        for qubit in self._qubits:
+            if self._meas_basis[qubit] == 'Y':
                 self._circuit.sdg(qubit)
-            if self._meas_basis[qubit.index] in ['X', 'Y']:
+            if self._meas_basis[qubit] in ['X', 'Y']:
                 self._circuit.h(qubit)
-            self._circuit.measure(qubit.index, qubit.index)
+            self._circuit.measure(qubit, qubit)
 
         # add calibration to circuit
         for inst, qubits, _ in self._circuit.data:
