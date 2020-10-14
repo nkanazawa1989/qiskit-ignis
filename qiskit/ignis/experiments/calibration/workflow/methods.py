@@ -13,7 +13,8 @@
 
 """
 
-from typing import Optional, Dict, Any
+from typing import Dict, Any
+import numpy as np
 
 from qiskit.ignis.experiments.calibration import workflow
 from qiskit.ignis.experiments.calibration.workflow.base_routine import NodeType
@@ -24,7 +25,6 @@ from qiskit.result import Result
 class AnalysisWorkFlow:
     """Definition of workflow of measurement data processing."""
     def __init__(self,
-                 qubits: Optional[int] = None,
                  average: bool = True):
         """Create new workflow.
 
@@ -35,7 +35,6 @@ class AnalysisWorkFlow:
         self._root_node = workflow.Marginalize()
         self._shots = None
 
-        self._qubits = qubits
         self._average = average
 
     @property
@@ -81,15 +80,16 @@ class AnalysisWorkFlow:
         if not self._root_node:
             return result
 
-        data = result.data(experiment=index)
+        if self.meas_level() == MeasLevel.CLASSIFIED:
+            data = result.get_counts(experiment=index)
+        else:
+            data = np.asarray(result.get_memory(experiment=index), dtype=complex)
 
         formatted_data = self._root_node.format_data(
             data=data,
             metadata=metadata,
             shots=self.shots
         )
-        if self._average:
-            pass
 
         return formatted_data
 
