@@ -14,13 +14,15 @@
 """
 
 from abc import ABCMeta, abstractmethod
-from typing import Any
+from typing import Any, Dict, Iterator
+from enum import Enum
 
 from qiskit.ignis.experiments.calibration.exceptions import CalExpError
 
 
 class AnalysisRoutine(metaclass=ABCMeta):
-    PREV_NODES = ()
+    node_type = None
+    prev_node = ()
 
     def __init__(self):
         """Create new workflow."""
@@ -36,13 +38,13 @@ class AnalysisRoutine(metaclass=ABCMeta):
         Args:
             component: New data processing routine.
         """
-        if not component.PREV_NODES:
+        if not component.prev_node:
             raise CalExpError('Analysis routine {name} is a root node. '
                               'This routine cannot be appended to another node.'
                               ''.format(name=component.__class__.__name__))
 
         if self._child is None:
-            if isinstance(self, component.PREV_NODES):
+            if isinstance(self, component.prev_node):
                 self._child = component
             else:
                 raise CalExpError(
@@ -52,13 +54,72 @@ class AnalysisRoutine(metaclass=ABCMeta):
             self._child.append(component)
 
     @abstractmethod
-    def process(self, data: Any, shots: int):
+    def process(self,
+                data: Any,
+                metadata: Dict[str, Any],
+                shots: int):
         pass
 
-    def format_data(self, data: Any, shots: int):
-        processed_data = self.process(data, shots)
+    def format_data(self,
+                    data: Any,
+                    metadata: Dict[str, Any],
+                    shots: int):
+        processed_data = self.process(data, metadata, shots)
 
         if self._child:
-            return self._child.format_data(processed_data, shots)
+            return self._child.format_data(processed_data, metadata, shots)
         else:
             return processed_data
+
+
+class NodeType(Enum):
+    ROOT = 0
+    KERNEL = 1
+    DISCRIMINATOR = 2
+    IQDATA = 3
+    COUNTS = 4
+
+
+def root(cls: AnalysisRoutine):
+    """A decorator to give root attribute to node."""
+    cls.node_type = NodeType.ROOT
+    return cls
+
+
+def kernel(cls: AnalysisRoutine):
+    """A decorator to give kernel attribute to node."""
+    cls.node_type = NodeType.KERNEL
+    return cls
+
+
+def discriminator(cls: AnalysisRoutine):
+    """A decorator to give discriminator attribute to node."""
+    cls.node_type = NodeType.DISCRIMINATOR
+    return cls
+
+
+def iq_data(cls: AnalysisRoutine):
+    """A decorator to give iqdata attribute to node."""
+    cls.node_type = NodeType.IQDATA
+    return cls
+
+
+def counts(cls: AnalysisRoutine):
+    """A decorator to give counts attribute to node."""
+    cls.node_type = NodeType.COUNTS
+    return cls
+
+
+def prev_node(*nodes: AnalysisRoutine):
+    """A decorator to specify the available previous nodes."""
+
+    try:
+        nodes = list(nodes)
+    except TypeError:
+        nodes = [nodes]
+
+    def add_nodes(cls: AnalysisRoutine):
+        cls.prev_node = tuple(nodes)
+        return cls
+
+    return add_nodes

@@ -13,7 +13,10 @@
 
 """
 
+from typing import Optional, Dict, Any
+
 from qiskit.ignis.experiments.calibration import workflow
+from qiskit.ignis.experiments.calibration.workflow.base_routine import NodeType
 from qiskit.qobj.utils import MeasLevel, MeasReturnType
 from qiskit.result import Result
 
@@ -21,31 +24,47 @@ from qiskit.result import Result
 class AnalysisWorkFlow:
     """Definition of workflow of measurement data processing."""
     def __init__(self,
-                 average: bool = True,
-                 shots: int = 1024):
+                 qubits: Optional[int] = None,
+                 average: bool = True):
         """Create new workflow.
 
         Args:
+            qubits: Set index of qubits to extract.
             average: Set `True` to average outcomes.
-            shots: Number of shots, default to 1024.
         """
-        self.root_node = None
-        self.average = average
-        self.shots = shots
+        self._root_node = workflow.Marginalize()
+        self._shots = None
+
+        self._qubits = qubits
+        self._average = average
+
+    @property
+    def shots(self):
+        """Return shot value."""
+        return self._shots
+
+    @shots.setter
+    def shots(self, val: int):
+        """Set new shot value."""
+        self._shots = val
+
+    def append(self, node: workflow.AnalysisRoutine):
+        """Append new analysis node to this workflow."""
+        self._root_node.append(node)
 
     def meas_return(self):
         """Return appropriate measurement format to execute this analysis chain."""
-        if AnalysisWorkFlow.check_discriminator(self.root_node):
+        if AnalysisWorkFlow.check_discriminator(self._root_node):
             # if discriminator is defined, return type should be single.
             # quantum state cannot be discriminated with averaged IQ coordinate.
             return MeasReturnType.SINGLE
-        return MeasReturnType.AVERAGE if self.average else MeasReturnType.SINGLE
+        return MeasReturnType.AVERAGE if self._average else MeasReturnType.SINGLE
 
     def meas_level(self):
         """Return appropriate measurement level to execute this analysis chain."""
-        kernel = AnalysisWorkFlow.check_kernel(self.root_node)
+        kernel = AnalysisWorkFlow.check_kernel(self._root_node)
         if kernel and isinstance(kernel, workflow.SystemKernel):
-            discriminator = AnalysisWorkFlow.check_discriminator(self.root_node)
+            discriminator = AnalysisWorkFlow.check_discriminator(self._root_node)
             if discriminator and isinstance(discriminator, workflow.SystemDiscriminator):
                 # classified level if both system kernel and discriminator are defined
                 return MeasLevel.CLASSIFIED
@@ -54,16 +73,22 @@ class AnalysisWorkFlow:
         # otherwise raw level is requested
         return MeasLevel.RAW
 
-    def format_data(self, result: Result):
+    def format_data(self,
+                    result: Result,
+                    metadata: Dict[str, Any],
+                    index: int):
         """Format qiskit result data."""
-        if not self.root_node:
+        if not self._root_node:
             return result
 
-        formatted_data = self.root_node.format_data(
-            data=result,
+        data = result.data(experiment=index)
+
+        formatted_data = self._root_node.format_data(
+            data=data,
+            metadata=metadata,
             shots=self.shots
         )
-        if self.average:
+        if self._average:
             pass
 
         return formatted_data
@@ -71,56 +96,19 @@ class AnalysisWorkFlow:
     @classmethod
     def check_kernel(cls, node: workflow.AnalysisRoutine):
         """Return stored kernel in the workflow."""
-        if not node.child:
-            return None
-
-        if isinstance(node, workflow.Kernel):
+        if node.node_type == NodeType.KERNEL:
             return node
         else:
+            if not node.child:
+                return None
             return cls.check_kernel(node.child)
 
     @classmethod
-    def check_discriminator(cls, node: workflow):
+    def check_discriminator(cls, node: workflow.AnalysisRoutine):
         """Return stored discriminator in the workflow."""
-        if not node.child:
-            return None
-
-        if isinstance(node, workflow.Kernel):
+        if node.node_type == NodeType.DISCRIMINATOR:
             return node
         else:
+            if not node.child:
+                return None
             return cls.check_discriminator(node.child)
-
-
-class CalibrationWorkflow(AnalysisWorkFlow):
-
-    def __init__(self,
-                 iq_method: str = 'real',
-                 average: bool = True,
-                 shots: int = 1024):
-        super().__init__(
-            average=average,
-            shots=shots
-        )
-        # add system kernel
-        self.root_node = workflow.SystemKernel()
-
-        # add post-processing for IQ data
-        if iq_method == 'real':
-            self.root_node.append(workflow.RealNumbers)
-        elif iq_method == 'imag':
-            self.root_node.append(workflow.ImagNumbers)
-
-
-class CircuitWorkflow(AnalysisWorkFlow):
-
-    def __init__(self,
-                 shots: int = 1024):
-        super().__init__(
-            average=False,
-            shots=shots
-        )
-        # add system kernel
-        self.root_node = workflow.SystemKernel()
-
-        # add system discriminator
-        self.root_node.append(workflow.SystemDiscriminator())

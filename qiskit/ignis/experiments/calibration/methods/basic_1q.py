@@ -16,7 +16,11 @@ from typing import Optional
 
 import numpy as np
 from qiskit.ignis.experiments.base import Analysis
-from qiskit.ignis.experiments.calibration import cal_experiment, cal_table, sequences, types
+from qiskit.ignis.experiments.calibration import (cal_experiment,
+                                                  cal_table,
+                                                  sequences,
+                                                  types,
+                                                  workflow)
 from qiskit.ignis.experiments.calibration.exceptions import CalExpError
 
 
@@ -57,5 +61,4 @@ class RoughAmplitudeCalibration(cal_experiment.BaseCalibrationExperiment):
 
         super().__init__(generator=generator,
                          analysis=analysis,
-                         job=job,
-                         workflow=)
+                         job=job)

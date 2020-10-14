@@ -251,12 +251,16 @@ class BaseCalibrationExperiment(Experiment):
             meta['exp_id'] = exp_id
             meta['qubits'] = self.generator.qubits
 
+        # store shots information for post processing
+        self.workflow.shots = kwargs.get('shots', 1024)
+
         # Assemble qobj and submit to backend
         qobj = assemble(schedules,
                         backend=backend,
                         qobj_header={'metadata': metadata},
                         meas_level=self.workflow.meas_level(),
                         meas_return=self.workflow.meas_return(),
+                        shots=self.workflow.shots,
                         **kwargs)
         self._job = backend.run(qobj)
         return self
