@@ -74,13 +74,14 @@ class _CalibrationBuilder:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Insert measurement in specified measurement basis and add calibration."""
-        self._circuit.barrier(self._qubits)
-        for qubit in self._qubits:
-            if self._meas_basis[qubit] == 'Y':
-                self._circuit.sdg(qubit)
-            if self._meas_basis[qubit] in ['X', 'Y']:
-                self._circuit.h(qubit)
-            self._circuit.measure(qubit, qubit)
+        # convert logical index to physical index
+        self._circuit.barrier()
+        for qind, basis in enumerate(self._meas_basis):
+            if basis == 'Y':
+                self._circuit.sdg(qind)
+            if basis in ['X', 'Y']:
+                self._circuit.h(qind)
+            self._circuit.measure(qind, qind)
 
         # add calibration to circuit
         for inst, qubits, _ in self._circuit.data:

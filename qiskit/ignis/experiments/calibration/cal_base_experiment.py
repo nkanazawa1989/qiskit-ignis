@@ -32,22 +32,12 @@ class BaseCalibrationExperiment(Experiment):
                  job: Optional[BaseJob] = None,
                  workflow: Optional[AnalysisWorkFlow] = None):
         """Initialize an experiment."""
+        # data processing chain
         self._workflow = workflow
+
         super().__init__(generator=generator,
                          analysis=analysis,
                          job=job)
-
-    @property
-    def workflow(self):
-        """Return workflow for measurement data processing."""
-        return self._workflow
-
-    @workflow.setter
-    def workflow(self, workflow: AnalysisWorkFlow):
-        """Set workflow for measurement data processing."""
-        if not isinstance(workflow, AnalysisWorkFlow):
-            raise CalExpError('Invalid workflow object.')
-        self._workflow = workflow
 
     def schedules(self, backend: BaseBackend) -> List[pulse.Schedule]:
         """Return pulse schedules to submit."""
@@ -91,15 +81,24 @@ class BaseCalibrationExperiment(Experiment):
             meta['qubits'] = self.generator.qubits
 
         # store shots information for post processing
-        self.workflow.shots = kwargs.get('shots', 1024)
+        self._workflow.shots = kwargs.get('shots', 1024)
 
         # Assemble qobj and submit to backend
         qobj = assemble(schedules,
                         backend=backend,
                         qobj_header={'metadata': metadata},
-                        meas_level=self.workflow.meas_level(),
-                        meas_return=self.workflow.meas_return(),
-                        shots=self.workflow.shots,
+                        meas_level=self._workflow.meas_level(),
+                        meas_return=self._workflow.meas_return(),
+                        shots=self._workflow.shots,
                         **kwargs)
         self._job = backend.run(qobj)
         return self
+
+    def run_analysis(self, **params):
+        """Analyze the stored data.
+
+        Returns:
+            any: the output of the analysis,
+        """
+        self.analysis.workflow = self._workflow
+        super().run_analysis(**params)

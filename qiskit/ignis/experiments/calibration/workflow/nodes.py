@@ -30,7 +30,7 @@ class Marginalize(workflow.AnalysisRoutine):
                 shots: int):
         """Process input data."""
         if 'qubits' in metadata:
-            qinds = metadata['qubits']
+            qinds = list(range(len(metadata['qubits'])))
             if isinstance(data, Counts):
                 # count dictionary
                 marginal_data = marginal_counts(data, indices=qinds)
@@ -40,12 +40,12 @@ class Marginalize(workflow.AnalysisRoutine):
                     # single shot
                     marginal_data = np.zeros((data.shape[0], len(qinds)), dtype=complex)
                     for slot_ind, qind in enumerate(qinds):
-                        data[:, slot_ind] = data[:, qind]
+                        marginal_data[:, slot_ind] = data[:, qind]
                 else:
                     # averaged
                     marginal_data = np.zeros(len(qinds), dtype=complex)
                     for slot_ind, qind in enumerate(qinds):
-                        data[slot_ind] = data[qind]
+                        marginal_data[slot_ind] = data[qind]
         else:
             marginal_data = data
 
@@ -100,7 +100,22 @@ class RealNumbers(workflow.AnalysisRoutine):
                 data: Union[float, np.ndarray],
                 metadata: Dict[str, Any],
                 shots: int):
-        return data.real
+        return self.scale * data.real
+
+
+@workflow.iq_data
+@workflow.prev_node(SystemKernel)
+class ImagNumbers(workflow.AnalysisRoutine):
+    """IQ data post-processing. This returns imaginary part of IQ data."""
+    def __init__(self, scale: Optional[float] = 1.0):
+        self.scale = scale
+        super().__init__()
+
+    def process(self,
+                data: Any,
+                metadata: Dict[float, np.ndarray],
+                shots: int):
+        return self.scale * data.imag
 
 
 # Counts
@@ -124,18 +139,3 @@ class Population(workflow.AnalysisRoutine):
         populations /= shots
 
         return populations
-
-
-@workflow.iq_data
-@workflow.prev_node(SystemKernel)
-class ImagNumbers(workflow.AnalysisRoutine):
-    """IQ data post-processing. This returns imaginary part of IQ data."""
-    def __init__(self, scale: Optional[float] = 1.0):
-        self.scale = scale
-        super().__init__()
-
-    def process(self,
-                data: Any,
-                metadata: Dict[float, np.ndarray],
-                shots: int):
-        return data.imag

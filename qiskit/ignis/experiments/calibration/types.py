@@ -13,8 +13,9 @@
 """Special data types for calibration module."""
 
 from enum import Enum
-from typing import List, Dict, Any, Union, NewType, Tuple, NamedTuple
+from typing import List, Dict, Any, Union, NewType, NamedTuple
 
+import numpy as np
 from qiskit.circuit import QuantumCircuit, Parameter
 
 # All data types that can be accepted as parameter
@@ -36,7 +37,9 @@ FitResult = NamedTuple(
     'FitResult',
     [('fitval', List[float]),
      ('stdev', List[float]),
-     ('chisq', float)]
+     ('chisq', float),
+     ('xvals', np.ndarray),
+     ('yvals', np.ndarray)]
 )
 FitResult.__doc__ = 'Result data of fitting.'
 FitResult.fitval.__doc__ = 'Fit parameter values.'

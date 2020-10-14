@@ -15,14 +15,79 @@
 from typing import Optional
 
 import numpy as np
-from qiskit.ignis.experiments.base import Analysis
+
 from qiskit.ignis.experiments.calibration import (cal_base_experiment,
                                                   cal_base_generator,
+                                                  cal_base_fitter,
                                                   cal_table,
                                                   sequences,
                                                   types,
+                                                  fitters,
                                                   workflow)
 from qiskit.ignis.experiments.calibration.exceptions import CalExpError
+
+
+class RoughSpectroscopy(cal_base_experiment.BaseCalibrationExperiment):
+
+    # pylint: disable=arguments-differ
+    def __init__(self,
+                 table: cal_table.CalibrationDataTable,
+                 qubit: int,
+                 data_processing: workflow.AnalysisWorkFlow,
+                 freq_vals: np.ndarray,
+                 amplitude: float = 0.05,
+                 sigma: float = 360,
+                 duration: int = 1440,
+                 analysis: Optional[cal_base_fitter.BaseCalibrationAnalysis] = None,
+                 job: Optional = None):
+        entry = types.SingleQubitAtomicPulses.STIM.value
+
+        if not table.has(
+            instruction=entry,
+            qubits=[qubit]
+        ):
+            raise CalExpError('Entry {name} does not exist. '
+                              'Check your calibration table.'.format(name=entry))
+
+        # setup spectroscopy pulse
+        new_params = {'amp': amplitude, 'sigma': sigma, 'duration': duration}
+
+        for key, val in new_params.items():
+            table.set_parameter(
+                instruction=entry,
+                qubits=[qubit],
+                param_name=key,
+                param_value=val
+            )
+
+        # parametrize table
+        freq = table.parametrize(
+            instruction=entry,
+            qubits=[qubit],
+            param_name='sideband'
+        )
+
+        # setup generator
+        generator = cal_base_generator.BaseCalibrationGenerator(
+            cal_name='rough_spectroscopy',
+            target_qubits=[qubit],
+            cal_generator=sequences.rabi,
+            table=table,
+            meas_basis='z'
+        )
+        generator.assign_parameters({freq: freq_vals})
+
+        # setup analysis
+        if analysis is None:
+            analysis = fitters.GaussianFit(
+                name='rough_spectroscopy'
+            )
+        analysis.parameter = freq
+
+        super().__init__(generator=generator,
+                         analysis=analysis,
+                         job=job,
+                         workflow=data_processing)
 
 
 class RoughAmplitudeCalibration(cal_base_experiment.BaseCalibrationExperiment):
@@ -31,8 +96,11 @@ class RoughAmplitudeCalibration(cal_base_experiment.BaseCalibrationExperiment):
     def __init__(self,
                  table: cal_table.CalibrationDataTable,
                  qubit: int,
+                 data_processing: workflow.AnalysisWorkFlow,
                  amp_vals: np.ndarray,
-                 analysis: Optional[Analysis] = None,
+                 sigma: float = 40,
+                 duration: int = 160,
+                 analysis: Optional[cal_base_fitter.BaseCalibrationAnalysis] = None,
                  job: Optional = None):
         entry = types.SingleQubitAtomicPulses.STIM.value
 
@@ -50,6 +118,17 @@ class RoughAmplitudeCalibration(cal_base_experiment.BaseCalibrationExperiment):
             param_name='amp'
         )
 
+        # setup spectroscopy pulse
+        new_params = {'sigma': sigma, 'duration': duration}
+
+        for key, val in new_params.items():
+            table.set_parameter(
+                instruction=entry,
+                qubits=[qubit],
+                param_name=key,
+                param_value=val
+            )
+
         # setup generator
         generator = cal_base_generator.BaseCalibrationGenerator(
             cal_name='rough_amplitude',
@@ -58,8 +137,17 @@ class RoughAmplitudeCalibration(cal_base_experiment.BaseCalibrationExperiment):
             table=table,
             meas_basis='z'
         )
+
         generator.assign_parameters({amp: amp_vals})
+
+        # setup analysis
+        if analysis is None:
+            analysis = fitters.CosinusoidalFit(
+                name='rough_amplitude'
+            )
+        analysis.parameter = amp
 
         super().__init__(generator=generator,
                          analysis=analysis,
-                         job=job)
+                         job=job,
+                         workflow=data_processing)

@@ -15,7 +15,6 @@
 Fitter modules.
 """
 
-from qiskit.ignis.experiments.calibration.fitters.utils import (
-    create_data_vector,
-    calculate_chisq
-)
+from qiskit.ignis.experiments.calibration.fitters.trigonometric import CosinusoidalFit
+
+from qiskit.ignis.experiments.calibration.fitters.peak import GaussianFit

@@ -204,6 +204,17 @@ class CalibrationDataTable:
 
         return None
 
+    def set_parameter(self,
+                      instruction: str,
+                      qubits: Union[int, Iterable[int]],
+                      param_name: str,
+                      param_value: float):
+        """Set parameter value."""
+        qubits = CalibrationDataTable._to_tuple(qubits)
+
+        if self.has(instruction, qubits):
+            self._map[instruction][qubits][param_name] = param_value
+
     @classmethod
     def _to_tuple(cls, qubits: Union[int, Iterable[int]]):
         """A helper function to convert qubits into tuple."""

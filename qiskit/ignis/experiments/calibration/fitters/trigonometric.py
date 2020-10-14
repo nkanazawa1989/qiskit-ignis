@@ -10,13 +10,12 @@
 # copyright notice, and modified files need to carry a notice indicating
 # that they have been altered from the originals.
 
-from typing import List, Dict, Any
+import numpy as np
 
-from scipy import optimize, signal
-from numpy import np
+from scipy import signal
+from typing import Iterator, Tuple, List
 
-from qiskit.ignis.experiments.calibration import fitters, types
-from qiskit.ignis.experiments.calibration.exceptions import CalExpError
+from qiskit.ignis.experiments.calibration import cal_base_fitter
 
 
 def _freq_guess(xvals: np.ndarray, yvals: np.ndarray):
@@ -38,46 +37,27 @@ def _freq_guess(xvals: np.ndarray, yvals: np.ndarray):
     return f0_guess
 
 
-def fit_cosinusoidal(data: np.ndarray,
-                     metadata: List[Dict[str, Any]],
-                     parameter: str,
-                     series: List[Dict[str, Any]]) -> types.FitResult:
-    """Perform cosinusoidal fit.
+class CosinusoidalFit(cal_base_fitter.BaseCalibrationAnalysis):
+    r"""Fit with $F(x) = a \cos(2\pi f x + \phi) + b$."""
 
-    Args:
-        data: Formatted data to fit.
-        metadata: List of metadata representing experimental configuration of each data entry.
-        parameter: Name of parameter to scan.
-        series: Partial dictionary to represent a series of experiment.
+    @classmethod
+    def initial_guess(cls,
+                      xvals: np.ndarray,
+                      yvals: np.ndarray) -> Iterator[np.ndarray]:
 
-    Returns:
-        Fit parameters with statistics.
-    """
+        y_mean = np.mean(yvals)
+        a0 = np.max(np.abs(yvals)) - np.abs(y_mean)
+        f0 = _freq_guess(xvals, yvals)
 
-    if series:
-        raise CalExpError('Sinusoidal fit does not take multiple data series. '
-                          'Check your experiment configuration.')
+        for phi in np.linspace(-np.pi, np.pi, 10):
+            yield np.array([a0, f0, phi, y_mean])
 
-    xvals, yvals = fitters.create_data_vector(data=data,
-                                              metadata=metadata,
-                                              parameter=parameter,
-                                              series=series)
+    @classmethod
+    def fit_function(cls, xvals: np.ndarray, *args) -> np.ndarray:
+        return args[0] * np.cos(2 * np.pi * args[1] * xvals + args[2]) + args[3]
 
-    def fit_function(x, amp, freq, phase, offset):
-        return amp * np.cos(2 * np.pi * freq * x + phase) + offset
-
-    # create initial guess of parameters
-    amp0 = np.max(np.abs(yvals))
-    freq0 = _freq_guess(xvals, yvals)
-    phase0 = 0
-    offset0 = 0
-    initial_guess = np.array([amp0, freq0, phase0, offset0])
-
-    p_opt, p_cov = optimize.curve_fit(fit_function, xvals, yvals, p0=initial_guess)
-    chi_sq = fitters.calculate_chisq(xvals=xvals,
-                                     yvals=yvals,
-                                     fit_yvals=fit_function(xvals, *p_opt),
-                                     n_params=4)
-    stdevs = np.sqrt(np.diag(p_cov))
-
-    return types.FitResult(fitval=p_opt, stdev=stdevs, chisq=chi_sq)
+    @classmethod
+    def fit_boundary(cls,
+                     xvals: np.ndarray,
+                     yvals: np.ndarray) -> Tuple[List[float], List[float]]:
+        return [-np.inf, 0, -np.pi, -np.inf], [np.inf, np.inf, np.pi, np.inf]

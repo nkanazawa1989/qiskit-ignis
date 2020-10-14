@@ -29,7 +29,6 @@ class BaseCalibrationAnalysis(Analysis):
     """Calibration experiment analysis."""
 
     def __init__(self,
-                 workflow: AnalysisWorkFlow,
                  name: Optional[str] = None,
                  data: Optional[Any] = None,
                  metadata: Optional[Dict[str, Any]] = None,
@@ -37,7 +36,6 @@ class BaseCalibrationAnalysis(Analysis):
         """Initialize calibration experiment analysis
 
         Args:
-            workflow: Workflow of measurement data processing.
             name: Name of this analysis.
             data: Result data to initialize with.
             metadata: Metadata to initialize with.
@@ -46,14 +44,12 @@ class BaseCalibrationAnalysis(Analysis):
         Additional Information:
             Pulse job doesn't return marginalized result.
             Result memory slot is marginalized with qubits specified in metadata.
-            Direct index mapping between qubit and classical bit is assumed.
 
             User don't need to take care of data format.
             Data is automatically processed based on the give workflow.
         """
         # Workflow for measurement data processing
-        self._workflow = workflow
-
+        self._workflow = None
         self._parameter = None
         self._series = []
 
@@ -85,6 +81,16 @@ class BaseCalibrationAnalysis(Analysis):
         else:
             self._parameter = parameter
 
+    @property
+    def workflow(self):
+        """Return data processing routine."""
+        return self._workflow
+
+    @workflow.setter
+    def workflow(self, work_flow: AnalysisWorkFlow):
+        """Set workflow."""
+        self._workflow = work_flow
+
     @classmethod
     def initial_guess(cls,
                       xvals: np.ndarray,
@@ -106,14 +112,43 @@ class BaseCalibrationAnalysis(Analysis):
         raise NotImplementedError
 
     @classmethod
-    def fit_boundary(cls):
+    def fit_boundary(cls,
+                     xvals: np.ndarray,
+                     yvals: np.ndarray) -> Tuple[List[float], List[float]]:
         """Returns boundary of parameters to fit."""
         raise NotImplementedError
 
     @classmethod
-    def fit_function(cls, xvals: np.ndarray, *args):
+    def fit_function(cls, xvals: np.ndarray, *args) -> np.ndarray:
         """Fit function."""
         raise NotImplementedError
+
+    def plot(self, ax: Optional['Axis'] = None, **kwargs) -> 'Figure':
+        import matplotlib
+        import matplotlib.pyplot as plt
+
+        if ax:
+            figure = ax.figure
+        else:
+            figure = plt.figure(figsize=kwargs.get('figsize', (6, 4)))
+            ax = figure.add_subplot(111)
+
+        xval_interp = np.linspace(self._result.xvals[0], self._result.xvals[-1], 100)
+        yval_fit = self.fit_function(xval_interp, *self._result.fitval)
+
+        ax.plot(xval_interp, yval_fit, '--', color='blue')
+        ax.plot(self._result.xvals, self._result.yvals, 'o', color='blue')
+
+        ax.set_xlim(self._result.xvals[0], self._result.xvals[-1])
+
+        ax.set_xlabel(kwargs.get('xlabel', self.parameter), fontsize=14)
+        ax.set_ylabel(kwargs.get('ylabel', 'Signal'), fontsize=14)
+
+        if matplotlib.get_backend() in ['module://ipykernel.pylab.backend_inline',
+                                        'nbAgg']:
+            plt.close(figure)
+
+        return figure
 
     def run(self, **kwargs) -> any:
         """Analyze the stored data.
@@ -133,7 +168,7 @@ class BaseCalibrationAnalysis(Analysis):
                                               xdata=xvals,
                                               ydata=yvals,
                                               p0=initial_guess,
-                                              bounds=self.fit_boundary())
+                                              bounds=self.fit_boundary(xvals, yvals))
 
             # calculate chi square
             chi_sq = _calculate_chisq(xvals=xvals,
@@ -144,7 +179,11 @@ class BaseCalibrationAnalysis(Analysis):
             stdev = np.sqrt(np.diag(p_cov))
 
             if result is None or result.chisq > chi_sq:
-                result = types.FitResult(fitval=p_opt, stdev=stdev, chisq=chi_sq)
+                result = types.FitResult(fitval=p_opt,
+                                         stdev=stdev,
+                                         chisq=chi_sq,
+                                         xvals=xvals,
+                                         yvals=yvals)
 
         # keep the best result
         self._result = result
@@ -156,6 +195,7 @@ class BaseCalibrationAnalysis(Analysis):
                      metadata: Dict[str, any],
                      index: int) -> Counts:
         """Format the required data from a Result.data dict"""
+
         return self._workflow.format_data(
             result=data,
             metadata=metadata,
@@ -192,18 +232,21 @@ def _create_data_vector(data: List[np.ndarray],
                 return False
         return True
 
-    for data, meta in zip(data, metadata):
+    for outcomes, meta in zip(data, metadata):
         if parameter:
             xvals.append(meta.get(parameter, None))
         if series:
             for sind, sub_meta in enumerate(series):
                 if _check_series(meta=meta, sub_meta=sub_meta):
-                    if data.size == 1:
-                        yvals[sind].append(data[0])
+                    if outcomes.size == 1:
+                        yvals[sind].append(outcomes[0])
                     else:
-                        yvals[sind].append(data)
+                        yvals[sind].append(outcomes)
         else:
-            yvals[0].append(data)
+            if outcomes.size == 1:
+                yvals[0].append(outcomes[0])
+            else:
+                yvals[0].append(outcomes)
 
     xvals = np.asarray(xvals, dtype=float)
 

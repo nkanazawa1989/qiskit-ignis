@@ -37,8 +37,8 @@ class FakeDatabase:
                     qubits=[qind],
                     channel=pulse.DriveChannel(qind),
                     generator=pulse.Drag,
-                    param_names=['duration', 'amp', 'sigma', 'beta'],
-                    param_vals=[160, 0, 40, 0]
+                    param_names=['duration', 'amp', 'sigma', 'beta', 'sideband', 'phase'],
+                    param_vals=[160, 0, 40, 0, 0, 0]
                 )
                 self._table.add(
                     instruction=name,
