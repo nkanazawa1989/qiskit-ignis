@@ -31,6 +31,19 @@ CalProg.circuits.__doc__ = 'List of calibration circuit.'
 CalProg.metadata.__doc__ = 'List of metadata representing experimental details.'
 
 
+# Fit result
+FitResult = NamedTuple(
+    'FitResult',
+    [('fitval', List[float]),
+     ('stdev', List[float]),
+     ('chisq', float)]
+)
+FitResult.__doc__ = 'Result data of fitting.'
+FitResult.fitval.__doc__ = 'Fit parameter values.'
+FitResult.stdev.__doc__ = 'Standard deviation of fit parameters.'
+FitResult.chisq.__doc__ = 'Reduced Chi squared value of fit result.'
+
+
 class SingleQubitAtomicPulses(Enum):
     """Name of single qubit gates."""
     X90P = 'x90p'

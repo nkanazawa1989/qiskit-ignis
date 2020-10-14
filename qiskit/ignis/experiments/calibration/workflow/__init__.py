@@ -14,7 +14,7 @@ Module to manage measurement data processing.
 """
 
 # base routine
-from qiskit.ignis.experiments.calibration.workflow.base_routine import (
+from qiskit.ignis.experiments.calibration.workflow.base_nodes import (
     AnalysisRoutine,
     root,
     kernel,
@@ -25,15 +25,16 @@ from qiskit.ignis.experiments.calibration.workflow.base_routine import (
 )
 
 # nodes
-from qiskit.ignis.experiments.calibration.workflow.process_nodes import (
+from qiskit.ignis.experiments.calibration.workflow.nodes import (
     Marginalize,
     SystemKernel,
     SystemDiscriminator,
     RealNumbers,
-    ImagNumbers
+    ImagNumbers,
+    Population
 )
 
 # methods
-from qiskit.ignis.experiments.calibration.workflow.methods import (
+from qiskit.ignis.experiments.calibration.workflow.interface import (
     AnalysisWorkFlow
 )

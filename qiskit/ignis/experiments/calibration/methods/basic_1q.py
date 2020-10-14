@@ -16,7 +16,8 @@ from typing import Optional
 
 import numpy as np
 from qiskit.ignis.experiments.base import Analysis
-from qiskit.ignis.experiments.calibration import (cal_experiment,
+from qiskit.ignis.experiments.calibration import (cal_base_experiment,
+                                                  cal_base_generator,
                                                   cal_table,
                                                   sequences,
                                                   types,
@@ -24,7 +25,7 @@ from qiskit.ignis.experiments.calibration import (cal_experiment,
 from qiskit.ignis.experiments.calibration.exceptions import CalExpError
 
 
-class RoughAmplitudeCalibration(cal_experiment.BaseCalibrationExperiment):
+class RoughAmplitudeCalibration(cal_base_experiment.BaseCalibrationExperiment):
 
     # pylint: disable=arguments-differ
     def __init__(self,
@@ -50,7 +51,7 @@ class RoughAmplitudeCalibration(cal_experiment.BaseCalibrationExperiment):
         )
 
         # setup generator
-        generator = cal_experiment.BaseCalibrationGenerator(
+        generator = cal_base_generator.BaseCalibrationGenerator(
             cal_name='rough_amplitude',
             target_qubits=[qubit],
             cal_generator=sequences.rabi,

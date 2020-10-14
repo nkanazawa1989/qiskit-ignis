@@ -17,7 +17,7 @@ from typing import Dict, Any
 import numpy as np
 
 from qiskit.ignis.experiments.calibration import workflow
-from qiskit.ignis.experiments.calibration.workflow.base_routine import NodeType
+from qiskit.ignis.experiments.calibration.workflow.base_nodes import NodeType
 from qiskit.qobj.utils import MeasLevel, MeasReturnType
 from qiskit.result import Result
 
@@ -29,7 +29,6 @@ class AnalysisWorkFlow:
         """Create new workflow.
 
         Args:
-            qubits: Set index of qubits to extract.
             average: Set `True` to average outcomes.
         """
         self._root_node = workflow.Marginalize()

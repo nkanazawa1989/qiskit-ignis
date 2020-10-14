@@ -75,12 +75,12 @@ def ramsey_xy(
         cal_builder.atomic_gate(name=Insts.Y90P.value, qubits=target_qubits)
 
     meta_x = {
-        'generator': 'ramsey',
+        'generator': 'ramsey_xy',
         'meas_basis': meas_basis,
         'quad': 'x'
     }
     meta_y = {
-        'generator': 'ramsey',
+        'generator': 'ramsey_xy',
         'meas_basis': meas_basis,
         'quad': 'y'
     }

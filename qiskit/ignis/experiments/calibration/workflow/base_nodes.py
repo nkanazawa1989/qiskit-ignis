@@ -14,8 +14,8 @@
 """
 
 from abc import ABCMeta, abstractmethod
-from typing import Any, Dict, Iterator
 from enum import Enum
+from typing import Any, Dict
 
 from qiskit.ignis.experiments.calibration.exceptions import CalExpError
 

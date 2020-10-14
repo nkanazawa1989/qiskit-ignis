@@ -42,6 +42,7 @@ class Marginalize(workflow.AnalysisRoutine):
                     for slot_ind, qind in enumerate(qinds):
                         data[:, slot_ind] = data[:, qind]
                 else:
+                    # averaged
                     marginal_data = np.zeros(len(qinds), dtype=complex)
                     for slot_ind, qind in enumerate(qinds):
                         data[slot_ind] = data[qind]
