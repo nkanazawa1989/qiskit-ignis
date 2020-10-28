@@ -12,7 +12,7 @@
 
 """Data source to generate schedule."""
 
-from typing import Optional
+from typing import Optional, List, Callable, Union, Dict
 
 import numpy as np
 
@@ -24,7 +24,11 @@ from qiskit.ignis.experiments.calibration import (cal_base_experiment,
                                                   types,
                                                   fitters,
                                                   workflow)
+from qiskit.ignis.experiments.base import Generator
 from qiskit.ignis.experiments.calibration.exceptions import CalExpError
+from qiskit.pulse import DriveChannel, Play, Gaussian, Schedule
+from qiskit import QuantumCircuit
+from qiskit.circuit import Parameter, ParameterExpression, Gate
 
 
 class RoughSpectroscopy(cal_base_experiment.BaseCalibrationExperiment):
@@ -151,3 +155,64 @@ class RoughAmplitudeCalibration(cal_base_experiment.BaseCalibrationExperiment):
                          analysis=analysis,
                          job=job,
                          workflow=data_processing)
+
+
+class RabiGenerator(Generator):
+    """A Generator for Rabi amplitude scans."""
+
+    def __init__(self,
+                 qubits: Union[int, List[int]],
+                 parameters: Dict,
+                 amplitudes: List,
+                 pulse: Callable = None):
+        """
+        Args:
+            qubits: List of qubits to which this calibration can be applied.
+            parameters: The arguments for the pulse schedule.
+            amplitudes: A list of amplitudes for which to generate a circuit.
+            pulse: A parametric pulse function used to generate the schedule
+                that is added to the circuits. This defaults to Gaussian and
+                parameters should contain 'duration', and 'sigma'.
+        """
+        super().__init__('Single pulse generator', qubits)
+        self._pulse = pulse
+        self.parameters = parameters
+        self.amplitudes = amplitudes
+
+        # Add the amplitude in the parameters if not supplied.
+        if 'amp' not in self.parameters:
+            self.parameters['amp'] = Parameter('α')
+        elif not isinstance(self.parameters['amp'], ParameterExpression):
+            self.parameters['amp'] = Parameter('α')
+
+        # Define the QuantumCircuit that this generator will use.
+        self.qc = QuantumCircuit(self._num_qubits, self._num_qubits)
+        for qubit in self._qubits:
+            gate = Gate('Rabi', 1, [self.parameters['amp']])
+            self.qc.append(gate, [qubit])
+            self.qc.add_calibration(gate, [qubit], self._schedule(qubit))
+
+        self.qc.measure(self._qubits, self._qubits)
+
+    def circuits(self) -> List[QuantumCircuit]:
+        """
+        Return a list of experiment circuits.
+        This function is also responsible for adding the
+        meta data to the circuits.
+        """
+        return [self.qc.assign_parameters({self.parameters['amp']: amp})
+                for amp in self.amplitudes]
+
+    def _schedule(self, qubit: int) -> Schedule:
+        """
+        Args:
+            qubit: The qubit to which this schedule is applied.
+        """
+        schedule = Schedule(name='Rabi amplitude')
+        if self._pulse is None:
+            return schedule.insert(0, Play(Gaussian(**self.parameters), DriveChannel(qubit)))
+        else:
+            return schedule.insert(0, Play(self._pulse(**self.parameters), DriveChannel(qubit)))
+
+    def _extra_metadata(self):
+        pass
