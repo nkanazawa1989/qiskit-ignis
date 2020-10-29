@@ -228,9 +228,9 @@ class SinglePulseSingleParameterGenerator(Generator):
         # Frequency shift and phase shift are not part of a pulse.
         params = {}
         for key, value in self.parameters.items():
-            if key not in ['freq_shift', 'phase_shift']:
+            if key not in ['frequency', 'phase']:
                 params[key] = value
-        
+
         if self._pulse is None:
             sched += sched.insert(0, Play(Gaussian(**params), ch))
         else:
