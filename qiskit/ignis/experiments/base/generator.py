@@ -40,7 +40,7 @@ class Generator(ABC):
             self._qubits = list(range(self._num_qubits))
         else:
             self._qubits = list(qubits)
-            self._num_qubits = max(self._qubits)+1
+            self._num_qubits = len(self._qubits)
 
     @property
     def name(self) -> str:

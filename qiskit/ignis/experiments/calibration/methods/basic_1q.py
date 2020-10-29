@@ -26,7 +26,7 @@ from qiskit.ignis.experiments.calibration import (cal_base_experiment,
                                                   workflow)
 from qiskit.ignis.experiments.base import Generator
 from qiskit.ignis.experiments.calibration.exceptions import CalExpError
-from qiskit.pulse import DriveChannel, Play, Gaussian, Schedule
+from qiskit.pulse import DriveChannel, Play, Gaussian, Schedule, SetFrequency, SetPhase
 from qiskit import QuantumCircuit
 from qiskit.circuit import Parameter, ParameterExpression, Gate
 
@@ -157,19 +157,27 @@ class RoughAmplitudeCalibration(cal_base_experiment.BaseCalibrationExperiment):
                          workflow=data_processing)
 
 
-class RabiGenerator(Generator):
-    """A Generator for Rabi amplitude scans."""
+class SinglePulseSingleParameterGenerator(Generator):
+    """
+    A generator that generates single pulses and scans a single parameter
+    of that pulse. Note that the same pulse may be applied to multiple qubits
+    to perform simultaneous calibration.
+    """
 
     def __init__(self,
                  qubits: Union[int, List[int]],
                  parameters: Dict,
                  amplitudes: List,
+                 scanned_parameter: str,
                  pulse: Callable = None):
         """
         Args:
             qubits: List of qubits to which this calibration can be applied.
             parameters: The arguments for the pulse schedule.
             amplitudes: A list of amplitudes for which to generate a circuit.
+            scanned_parameter: Name of the scanned parameter. If it is not present
+                in the parameters dictionary as a ParameterExpression it will
+                be added to this dict.
             pulse: A parametric pulse function used to generate the schedule
                 that is added to the circuits. This defaults to Gaussian and
                 parameters should contain 'duration', and 'sigma'.
@@ -178,17 +186,18 @@ class RabiGenerator(Generator):
         self._pulse = pulse
         self.parameters = parameters
         self.amplitudes = amplitudes
+        self.scanned_parameter = scanned_parameter
 
-        # Add the amplitude in the parameters if not supplied.
-        if 'amp' not in self.parameters:
-            self.parameters['amp'] = Parameter('α')
-        elif not isinstance(self.parameters['amp'], ParameterExpression):
-            self.parameters['amp'] = Parameter('α')
+        # Add the parameter to be scanned if not supplied.
+        if scanned_parameter not in self.parameters:
+            self.parameters[scanned_parameter] = Parameter('α')
+        elif not isinstance(self.parameters[scanned_parameter], ParameterExpression):
+            self.parameters[scanned_parameter] = Parameter('α')
 
         # Define the QuantumCircuit that this generator will use.
-        self.qc = QuantumCircuit(self._num_qubits, self._num_qubits)
+        self.qc = QuantumCircuit(max(self._qubits)+1, max(self._qubits)+1)
         for qubit in self._qubits:
-            gate = Gate('Rabi', 1, [self.parameters['amp']])
+            gate = Gate(scanned_parameter, 1, [self.parameters[scanned_parameter]])
             self.qc.append(gate, [qubit])
             self.qc.add_calibration(gate, [qubit], self._schedule(qubit))
 
@@ -200,19 +209,34 @@ class RabiGenerator(Generator):
         This function is also responsible for adding the
         meta data to the circuits.
         """
-        return [self.qc.assign_parameters({self.parameters['amp']: amp})
-                for amp in self.amplitudes]
+        return [self.qc.assign_parameters({self.parameters[self.scanned_parameter]: val})
+                for val in self.amplitudes]
 
     def _schedule(self, qubit: int) -> Schedule:
         """
+        Creates the schedules that will be added to the circuit.
+
         Args:
             qubit: The qubit to which this schedule is applied.
         """
-        schedule = Schedule(name='Rabi amplitude')
+        sched = Schedule(name=self.scanned_parameter)
+        ch = DriveChannel(qubit)
+
+        sched += sched.insert(0, SetFrequency(self.parameters.get('frequency', 0.), ch))
+        sched += sched.insert(0, SetPhase(self.parameters.get('phase', 0.), ch))
+
+        # Frequency shift and phase shift are not part of a pulse.
+        params = {}
+        for key, value in self.parameters.items():
+            if key not in ['freq_shift', 'phase_shift']:
+                params[key] = value
+        
         if self._pulse is None:
-            return schedule.insert(0, Play(Gaussian(**self.parameters), DriveChannel(qubit)))
+            sched += sched.insert(0, Play(Gaussian(**params), ch))
         else:
-            return schedule.insert(0, Play(self._pulse(**self.parameters), DriveChannel(qubit)))
+            sched += sched.insert(0, Play(self._pulse(**params), ch))
+
+        return sched
 
     def _extra_metadata(self):
         pass
