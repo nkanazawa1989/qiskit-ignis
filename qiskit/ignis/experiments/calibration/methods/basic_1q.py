@@ -105,7 +105,8 @@ class RoughAmplitudeCalibration(cal_base_experiment.BaseCalibrationExperiment):
                  sigma: float = 40,
                  duration: int = 160,
                  analysis: Optional[cal_base_fitter.BaseCalibrationAnalysis] = None,
-                 job: Optional = None):
+                 job: Optional = None,
+                 pulse_envelope: Optional[Callable] = Gaussian):
         entry = types.SingleQubitAtomicPulses.STIM.value
 
         if not table.has(
@@ -122,7 +123,7 @@ class RoughAmplitudeCalibration(cal_base_experiment.BaseCalibrationExperiment):
             param_name='amp'
         )
 
-        # setup spectroscopy pulse
+        # setup Rabi calibration pulse
         new_params = {'sigma': sigma, 'duration': duration}
 
         for key, val in new_params.items():
@@ -133,17 +134,7 @@ class RoughAmplitudeCalibration(cal_base_experiment.BaseCalibrationExperiment):
                 param_value=val
             )
 
-        # setup generator
-        #generator = cal_base_generator.BaseCalibrationGenerator(
-        #    cal_name='rough_amplitude',
-        #    target_qubits=[qubit],
-        #    cal_generator=sequences.rabi,
-        #    table=table,
-        #    meas_basis='z'
-        #)
-        generator = SinglePulseSingleParameterGenerator([qubit], new_params, amp_vals, 'amp', 'Rabi')
-
-        #generator.assign_parameters({amp: amp_vals})
+        generator = SinglePulseGenerator(qubit, new_params, amp_vals, 'amp', 'Rabi', pulse_envelope)
 
         # setup analysis
         if analysis is None:
@@ -166,6 +157,7 @@ class SinglePulseGenerator(Generator):
     """
 
     def __init__(self,
+                 qubit: int,
                  parameters: Dict,
                  values_to_scan: Union[List, np.array],
                  scanned_parameter: str,
@@ -173,7 +165,7 @@ class SinglePulseGenerator(Generator):
                  pulse: Callable = None):
         """
         Args:
-            qubits: List of qubits to which this calibration can be applied.
+            qubit: The qubit to which we will add the calibration.
             parameters: The arguments for the pulse schedule.
             values_to_scan: A list of amplitudes for which to generate a circuit.
             scanned_parameter: Name of the scanned parameter. If it is not present
@@ -188,6 +180,7 @@ class SinglePulseGenerator(Generator):
         self.parameters = parameters
         self.scanned_values = values_to_scan
         self.scanned_parameter = scanned_parameter
+        self.qubit = qubit
 
         # Add the parameter to be scanned if not supplied.
         if scanned_parameter not in self.parameters:
@@ -198,9 +191,9 @@ class SinglePulseGenerator(Generator):
         # Define the QuantumCircuit that this generator will use.
         self.template_qcs = []
         qc = QuantumCircuit(1, 1)
-        gate = Gate(scanned_parameter, 0, [self.parameters[scanned_parameter]])
+        gate = Gate(scanned_parameter, 1, [self.parameters[scanned_parameter]])
         qc.append(gate, [0])
-        qc.add_calibration(gate, [0], self._schedule(), self.parameters[scanned_parameter])
+        qc.add_calibration(gate, [self.qubit], self._schedule(), self.parameters[scanned_parameter])
         qc.measure(0, 0)
         self.template_qcs.append(qc)
 
@@ -219,7 +212,7 @@ class SinglePulseGenerator(Generator):
         Creates the schedules that will be added to the circuit.
         """
         sched = Schedule(name=self.scanned_parameter)
-        ch = DriveChannel(0)
+        ch = DriveChannel(self.qubit)
 
         # TODO Some backends apparently don't support SetPhase
         sched += sched.insert(0, SetFrequency(self.parameters.get('frequency', 0.), ch))
@@ -245,7 +238,7 @@ class SinglePulseGenerator(Generator):
         metadata = []
         for val in self.scanned_values:
             meta = {}
-            ch = DriveChannel(0)
+            ch = DriveChannel(self.qubit)
             meta[self.scanned_parameter + '.' + ch.name]: val
 
             metadata.append(meta)
