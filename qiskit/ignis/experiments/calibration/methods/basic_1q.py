@@ -158,7 +158,7 @@ class RoughAmplitudeCalibration(cal_base_experiment.BaseCalibrationExperiment):
                          workflow=data_processing)
 
 
-class SinglePulseSingleParameterGenerator(Generator):
+class SinglePulseGenerator(Generator):
     """
     A generator that generates single pulses and scans a single parameter
     of that pulse. Note that the same pulse may be applied to multiple qubits
@@ -166,9 +166,8 @@ class SinglePulseSingleParameterGenerator(Generator):
     """
 
     def __init__(self,
-                 qubits: Union[int, List[int]],
                  parameters: Dict,
-                 amplitudes: Union[List, np.array],
+                 values_to_scan: Union[List, np.array],
                  scanned_parameter: str,
                  name: str,
                  pulse: Callable = None):
@@ -176,7 +175,7 @@ class SinglePulseSingleParameterGenerator(Generator):
         Args:
             qubits: List of qubits to which this calibration can be applied.
             parameters: The arguments for the pulse schedule.
-            amplitudes: A list of amplitudes for which to generate a circuit.
+            values_to_scan: A list of amplitudes for which to generate a circuit.
             scanned_parameter: Name of the scanned parameter. If it is not present
                 in the parameters dictionary as a ParameterExpression it will
                 be added to this dict.
@@ -184,10 +183,10 @@ class SinglePulseSingleParameterGenerator(Generator):
                 that is added to the circuits. This defaults to Gaussian and
                 parameters should contain 'duration', and 'sigma'.
         """
-        super().__init__(name, qubits)
+        super().__init__(name, [0])
         self._pulse = pulse
         self.parameters = parameters
-        self.scanned_values = amplitudes
+        self.scanned_values = values_to_scan
         self.scanned_parameter = scanned_parameter
 
         # Add the parameter to be scanned if not supplied.
@@ -197,14 +196,13 @@ class SinglePulseSingleParameterGenerator(Generator):
             self.parameters[scanned_parameter] = Parameter('α')
 
         # Define the QuantumCircuit that this generator will use.
-        self.qc = QuantumCircuit(max(self._qubits)+1, max(self._qubits)+1)
-        for qubit in self._qubits:
-            gate = Gate(scanned_parameter, 1, [self.parameters[scanned_parameter]])
-            self.qc.append(gate, [qubit])
-            self.qc.add_calibration(gate, [qubit], self._schedule(qubit),
-                                    self.parameters[scanned_parameter])
-
-        self.qc.measure(self._qubits, self._qubits)
+        self.template_qcs = []
+        qc = QuantumCircuit(1, 1)
+        gate = Gate(scanned_parameter, 0, [self.parameters[scanned_parameter]])
+        qc.append(gate, [0])
+        qc.add_calibration(gate, [0], self._schedule(), self.parameters[scanned_parameter])
+        qc.measure(0, 0)
+        self.template_qcs.append(qc)
 
     def circuits(self) -> List[QuantumCircuit]:
         """
@@ -212,20 +210,18 @@ class SinglePulseSingleParameterGenerator(Generator):
         This function is also responsible for adding the
         meta data to the circuits.
         """
-        return [self.qc.assign_parameters({self.parameters[self.scanned_parameter]: val})
+        qc = self.template_qcs[0]
+        return [qc.assign_parameters({self.parameters[self.scanned_parameter]: val})
                 for val in self.scanned_values]
 
-    def _schedule(self, qubit: int) -> Schedule:
+    def _schedule(self) -> Schedule:
         """
         Creates the schedules that will be added to the circuit.
-
-        Args:
-            qubit: The qubit to which this schedule is applied.
         """
         sched = Schedule(name=self.scanned_parameter)
-        ch = DriveChannel(qubit)
+        ch = DriveChannel(0)
 
-        # TODO Some backends apparently don't support SetFrequency and SetPhase
+        # TODO Some backends apparently don't support SetPhase
         sched += sched.insert(0, SetFrequency(self.parameters.get('frequency', 0.), ch))
         sched += sched.insert(0, ShiftPhase(self.parameters.get('phase', 0.), ch))
 
@@ -249,9 +245,8 @@ class SinglePulseSingleParameterGenerator(Generator):
         metadata = []
         for val in self.scanned_values:
             meta = {}
-            for qubit in self._qubits:
-                ch = DriveChannel(qubit)
-                meta[self.scanned_parameter + '.' + ch.name]: val
+            ch = DriveChannel(0)
+            meta[self.scanned_parameter + '.' + ch.name]: val
 
             metadata.append(meta)
 
