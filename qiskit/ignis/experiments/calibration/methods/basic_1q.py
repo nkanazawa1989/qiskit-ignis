@@ -26,7 +26,7 @@ from qiskit.ignis.experiments.calibration import (cal_base_experiment,
                                                   workflow)
 from qiskit.ignis.experiments.base import Generator
 from qiskit.ignis.experiments.calibration.exceptions import CalExpError
-from qiskit.pulse import DriveChannel, Play, Gaussian, Schedule, SetFrequency, SetPhase
+from qiskit.pulse import DriveChannel, Play, Gaussian, Schedule, SetFrequency, ShiftPhase
 from qiskit import QuantumCircuit
 from qiskit.circuit import Parameter, ParameterExpression, Gate
 
@@ -134,15 +134,16 @@ class RoughAmplitudeCalibration(cal_base_experiment.BaseCalibrationExperiment):
             )
 
         # setup generator
-        generator = cal_base_generator.BaseCalibrationGenerator(
-            cal_name='rough_amplitude',
-            target_qubits=[qubit],
-            cal_generator=sequences.rabi,
-            table=table,
-            meas_basis='z'
-        )
+        #generator = cal_base_generator.BaseCalibrationGenerator(
+        #    cal_name='rough_amplitude',
+        #    target_qubits=[qubit],
+        #    cal_generator=sequences.rabi,
+        #    table=table,
+        #    meas_basis='z'
+        #)
+        generator = SinglePulseSingleParameterGenerator([qubit], new_params, amp_vals, 'amp', 'Rabi')
 
-        generator.assign_parameters({amp: amp_vals})
+        #generator.assign_parameters({amp: amp_vals})
 
         # setup analysis
         if analysis is None:
@@ -167,8 +168,9 @@ class SinglePulseSingleParameterGenerator(Generator):
     def __init__(self,
                  qubits: Union[int, List[int]],
                  parameters: Dict,
-                 amplitudes: List,
+                 amplitudes: Union[List, np.array],
                  scanned_parameter: str,
+                 name: str,
                  pulse: Callable = None):
         """
         Args:
@@ -182,10 +184,10 @@ class SinglePulseSingleParameterGenerator(Generator):
                 that is added to the circuits. This defaults to Gaussian and
                 parameters should contain 'duration', and 'sigma'.
         """
-        super().__init__('Single pulse generator', qubits)
+        super().__init__(name, qubits)
         self._pulse = pulse
         self.parameters = parameters
-        self.amplitudes = amplitudes
+        self.scanned_values = amplitudes
         self.scanned_parameter = scanned_parameter
 
         # Add the parameter to be scanned if not supplied.
@@ -199,7 +201,8 @@ class SinglePulseSingleParameterGenerator(Generator):
         for qubit in self._qubits:
             gate = Gate(scanned_parameter, 1, [self.parameters[scanned_parameter]])
             self.qc.append(gate, [qubit])
-            self.qc.add_calibration(gate, [qubit], self._schedule(qubit))
+            self.qc.add_calibration(gate, [qubit], self._schedule(qubit),
+                                    self.parameters[scanned_parameter])
 
         self.qc.measure(self._qubits, self._qubits)
 
@@ -210,7 +213,7 @@ class SinglePulseSingleParameterGenerator(Generator):
         meta data to the circuits.
         """
         return [self.qc.assign_parameters({self.parameters[self.scanned_parameter]: val})
-                for val in self.amplitudes]
+                for val in self.scanned_values]
 
     def _schedule(self, qubit: int) -> Schedule:
         """
@@ -222,8 +225,9 @@ class SinglePulseSingleParameterGenerator(Generator):
         sched = Schedule(name=self.scanned_parameter)
         ch = DriveChannel(qubit)
 
+        # TODO Some backends apparently don't support SetFrequency and SetPhase
         sched += sched.insert(0, SetFrequency(self.parameters.get('frequency', 0.), ch))
-        sched += sched.insert(0, SetPhase(self.parameters.get('phase', 0.), ch))
+        sched += sched.insert(0, ShiftPhase(self.parameters.get('phase', 0.), ch))
 
         # Frequency shift and phase shift are not part of a pulse.
         params = {}
@@ -239,4 +243,16 @@ class SinglePulseSingleParameterGenerator(Generator):
         return sched
 
     def _extra_metadata(self):
-        pass
+        """
+        Creates the metadata for the experiment.
+        """
+        metadata = []
+        for val in self.scanned_values:
+            meta = {}
+            for qubit in self._qubits:
+                ch = DriveChannel(qubit)
+                meta[self.scanned_parameter + '.' + ch.name]: val
+
+            metadata.append(meta)
+
+        return metadata
