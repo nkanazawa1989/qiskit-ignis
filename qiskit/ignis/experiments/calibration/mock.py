@@ -12,44 +12,58 @@
 
 """Mock database."""
 
-from qiskit import pulse
-from qiskit.ignis.experiments.calibration import cal_table, types
+from collections import defaultdict
+
+import pandas as pd
+from qiskit.ignis.experiments.calibration import cal_table
 
 
-class FakeDatabase:
-    """Fake calibration database."""
+class FakeSingleQubitTable(cal_table.ParameterTable):
+    """Fake parameter table. For debugging and unittest purposes."""
+    GATE_TYPES = ['x90p', 'xp']
 
     def __init__(self,
-                 backend_name: str,
-                 num_qubits: int):
-        """Create new database."""
-        self._table = cal_table.CalibrationDataTable(
-            backend_name=backend_name,
-            num_qubits=num_qubits
-        )
-        self._num_qubits = num_qubits
+                 n_qubits: int,
+                 default_duration: int = 160,
+                 default_amp: complex = 0.08 + 0.02j,
+                 default_sigma: float = 40.,
+                 default_beta: float = 1.5,
+                 caldate: str = '2020-01-01 00:00:00'):
+        """Create new parameter table.
 
-        # create single qubit gates
-        for qind in range(num_qubits):
-            for name in [e.value for e in types.SingleQubitAtomicPulses]:
-                gate = cal_table.AtomicGate(
-                    name=name,
-                    qubits=[qind],
-                    channel=pulse.DriveChannel(qind),
-                    generator=pulse.Drag,
-                    param_names=['duration', 'amp', 'sigma', 'beta', 'sideband', 'phase'],
-                    param_vals=[160, 0, 40, 0, 0, 0]
-                )
-                self._table.add(
-                    instruction=name,
-                    qubits=[qind],
-                    gate=gate
-                )
+        Args:
+            n_qubits: Number of qubits in this system.
+            default_duration: Duration of single qubit gates.
+            default_amp: Amplitude of single qubit gates.
+            default_sigma: Gaussian sigma of single qubit gates.
+            default_beta: DRAG beta of single qubit gates.
+            caldate: Date of when those parameters are acquired.
 
-    def load_calibrations(self) -> cal_table.CalibrationDataTable:
-        """Acquire calibration table."""
-        return self._table
+       Notes:
+            In this parameter table the DRAG pulse type parameter set is assumed.
+        """
+        name_map = {
+            'duration': default_duration,
+            'amp': default_amp,
+            'sigma': default_sigma,
+            'beta': default_beta
+        }
 
-    def update_calibrations(self, table: cal_table.CalibrationDataTable):
-        """Update calibration table."""
-        self._table._map.update(table._map)
+        fake_table = defaultdict(list)
+        for qind in range(n_qubits):
+            for gate in FakeSingleQubitTable.GATE_TYPES:
+                for pname, default_val in name_map.items():
+                    if pname == 'amp' and gate == 'xp':
+                        value = default_val * 2
+                    else:
+                        value = default_val
+
+                    fake_table['qubits'].append((qind, ))
+                    fake_table['channel'].append('d{qind:d}'.format(qind=qind))
+                    fake_table['gate_type'].append(gate)
+                    fake_table['name'].append(pname)
+                    fake_table['value'].append(value)
+                    fake_table['validation'].append('none')
+                    fake_table['timestamp'].append(pd.Timestamp(caldate))
+
+        super().__init__(params_collection=pd.DataFrame(data=fake_table))
