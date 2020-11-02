@@ -19,7 +19,7 @@ from qiskit import transpile, schedule, assemble, pulse
 from qiskit.providers import BaseBackend, BaseJob
 
 from qiskit.ignis.experiments.base import Experiment
-from qiskit.ignis.experiments.calibration import cal_base_generator, cal_base_fitter
+from qiskit.ignis.experiments.calibration import Calibration1DAnalysis
 from qiskit.ignis.experiments.calibration.exceptions import CalExpError
 from qiskit.ignis.experiments.calibration.workflow import AnalysisWorkFlow
 from qiskit.ignis.experiments.base import Generator
@@ -29,7 +29,7 @@ class BaseCalibrationExperiment(Experiment):
     """An experiment class for a calibration experiment."""
     def __init__(self,
                  generator: Optional[Generator] = None,
-                 analysis: Optional[cal_base_fitter.BaseCalibrationAnalysis] = None,
+                 analysis: Optional[Calibration1DAnalysis] = None,
                  job: Optional[BaseJob] = None,
                  workflow: Optional[AnalysisWorkFlow] = None):
         """Initialize an experiment."""

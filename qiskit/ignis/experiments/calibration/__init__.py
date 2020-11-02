@@ -12,4 +12,5 @@
 
 """Qiskit Ignis calibration module."""
 
-from cal_metadata import CalibrationMetadata
+from .cal_metadata import CalibrationMetadata
+from .cal_base_analysis import Calibration1DAnalysis

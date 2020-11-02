@@ -25,7 +25,7 @@ from qiskit.ignis.experiments.calibration import types, CalibrationMetadata
 from qiskit.ignis.experiments.calibration.workflow import AnalysisWorkFlow
 
 
-class BaseCalibrationAnalysis(Analysis):
+class Calibration1DAnalysis(Analysis):
     """Calibration experiment analysis."""
 
     def __init__(self,
@@ -51,7 +51,8 @@ class BaseCalibrationAnalysis(Analysis):
         # Workflow for measurement data processing
         self._workflow = None
         self._parameter = None
-        self._series = []
+        self._series = {}
+        self._x_values = None
 
         super().__init__(data=data,
                          metadata=metadata,
@@ -63,10 +64,10 @@ class BaseCalibrationAnalysis(Analysis):
         """Return data series dictionaries."""
         return self._series
 
-    @series.setter
-    def series(self, new_series: Dict[str, Any]):
-        """Add new data series."""
-        self._series.append(new_series)
+    @property
+    def x_values(self) -> list:
+        """X-values of the data."""
+        return self._x_values
 
     @property
     def parameter(self):
@@ -133,13 +134,14 @@ class BaseCalibrationAnalysis(Analysis):
             figure = plt.figure(figsize=kwargs.get('figsize', (6, 4)))
             ax = figure.add_subplot(111)
 
-        xval_interp = np.linspace(self._result.xvals[0], self._result.xvals[-1], 100)
-        yval_fit = self.fit_function(xval_interp, *self._result.fitval)
+        xval_interp = np.linspace(self.x_values[0], self.x_values[-1], 100)
 
-        ax.plot(xval_interp, yval_fit, '--', color='blue')
-        ax.plot(self._result.xvals, self._result.yvals, 'o', color='blue')
+        for series, yvals in self._series.items():
+            yval_fit = self.fit_function(xval_interp, *self._result[series].fitval)
+            ax.plot(xval_interp, yval_fit, '--', color='k')
+            ax.plot(self.x_values, yvals, 'o')
 
-        ax.set_xlim(self._result.xvals[0], self._result.xvals[-1])
+        ax.set_xlim(self.x_values[0], self.x_values[-1])
 
         ax.set_xlabel(kwargs.get('xlabel', self.parameter), fontsize=14)
         ax.set_ylabel(kwargs.get('ylabel', 'Signal'), fontsize=14)
@@ -161,30 +163,40 @@ class BaseCalibrationAnalysis(Analysis):
 
         # fit for each initial guess
         result = None
-        for initial_guess in self.initial_guess(xvals, yvals):
-            p_opt, p_cov = optimize.curve_fit(self.fit_function,
-                                              xdata=xvals,
-                                              ydata=yvals,
-                                              p0=initial_guess,
-                                              bounds=self.fit_boundary(xvals, yvals))
+        self._result = {}
+        for series_key, yvals in yvals.items():
+            for initial_guess in self.initial_guess(xvals, yvals):
+                try:
+                    p_opt, p_cov = optimize.curve_fit(self.fit_function,
+                                                      xdata=xvals,
+                                                      ydata=yvals,
+                                                      p0=initial_guess,
+                                                      bounds=self.fit_boundary(xvals, yvals))
 
-            # calculate chi square
-            chi_sq = _calculate_chisq(xvals=xvals,
-                                      yvals=yvals,
-                                      fit_yvals=self.fit_function(xvals, *p_opt),
-                                      n_params=len(initial_guess))
-            # calculate standard deviation
-            stdev = np.sqrt(np.diag(p_cov))
+                    # calculate chi square
+                    chi_sq = _calculate_chisq(xvals=xvals,
+                                              yvals=yvals,
+                                              fit_yvals=self.fit_function(xvals, *p_opt),
+                                              n_params=len(initial_guess))
+                    # calculate standard deviation
+                    stdev = np.sqrt(np.diag(p_cov))
 
-            if result is None or result.chisq > chi_sq:
-                result = types.FitResult(fitval=p_opt,
-                                         stdev=stdev,
-                                         chisq=chi_sq,
-                                         xvals=xvals,
-                                         yvals=yvals)
+                    if result is None or result.chisq > chi_sq:
+                        result = types.FitResult(fitval=p_opt,
+                                                 stdev=stdev,
+                                                 chisq=chi_sq,
+                                                 xvals=xvals,
+                                                 yvals=yvals)
 
-        # keep the best result
-        self._result = result
+                # Fitting may fail. For now pass but perhaps log
+                except RuntimeError:
+                    pass
+
+            # keep the best result
+            self._series[series_key] = yvals
+            self._result[series_key] = result
+
+        self._x_values = xvals
 
         return self._result
 
@@ -202,7 +214,7 @@ class BaseCalibrationAnalysis(Analysis):
 
 
 def _create_data_vector(data: List[np.ndarray],
-                        metadata_list: List[CalibrationMetadata],
+                        metadata_list: List[Dict[str, any]],
                         ) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
     """A helper function to extract xvalue and y value vectors from a set of
     data list and metadata.
@@ -221,8 +233,9 @@ def _create_data_vector(data: List[np.ndarray],
     xvals = []
     yvals = defaultdict(list)
 
-    for outcomes, metadata in zip(data, metadata_list):
-        xvals.append(metadata.x_values.values()[0])
+    for outcomes, meta in zip(data, metadata_list):
+        metadata = CalibrationMetadata(**meta)
+        xvals.append(next(iter(metadata.x_values.values())))
 
         # Single or averaged data
         if outcomes.size == 1:
