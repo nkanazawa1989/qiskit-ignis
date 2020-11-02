@@ -21,7 +21,7 @@ from qiskit.result import Result, Counts
 from scipy import optimize
 
 from qiskit.ignis.experiments.base import Analysis
-from qiskit.ignis.experiments.calibration import types
+from qiskit.ignis.experiments.calibration import types, CalibrationMetadata
 from qiskit.ignis.experiments.calibration.workflow import AnalysisWorkFlow
 
 
@@ -157,9 +157,7 @@ class BaseCalibrationAnalysis(Analysis):
             any: the output of the analysis,
         """
         xvals, yvals = _create_data_vector(data=self.data,
-                                           metadata=self.metadata,
-                                           parameter=self.parameter,
-                                           series=self.series)
+                                           metadata_list=self.metadata)
 
         # fit for each initial guess
         result = None
@@ -204,56 +202,36 @@ class BaseCalibrationAnalysis(Analysis):
 
 
 def _create_data_vector(data: List[np.ndarray],
-                        metadata: List[Dict[str, Any]],
-                        parameter: Optional[str] = None,
-                        series: Optional[List[Dict[str, Any]]] = None
-                        ) -> Tuple[np.ndarray, Union[np.ndarray, Dict[int, np.ndarray]]]:
+                        metadata_list: List[CalibrationMetadata],
+                        ) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
     """A helper function to extract xvalue and y value vectors from a set of
     data list and metadata.
 
-    If multiple series labels are provided, y values are returned as a dictionary
-    associated with each data series.
+    x values are returned as a list as this is a 1DCalibration analysis.
+    y values are returned as a dictionary associated with each data series.
 
     Args:
-        data: List of formatted data.
-        metadata: List of metadata representing experimental condition.
-        parameter: Name of parameter to scan.
-        series: Partial dictionary to represent a subset of experiment.
+        data: List of formatted data extracted from a Result class.
+        metadata_list: List of metadata representing experimental condition.
+            This should have the same length as data.
 
     Returns:
-        Data vectors of scanning parameters and outcomes.
+        x values and y values.
     """
     xvals = []
     yvals = defaultdict(list)
 
-    def _check_series(meta: Dict[str, Any], sub_meta: Dict[str, Any]):
-        for key, val in sub_meta.items():
-            if meta[key] != val:
-                return False
-        return True
+    for outcomes, metadata in zip(data, metadata_list):
+        xvals.append(metadata.x_values.values()[0])
 
-    for outcomes, meta in zip(data, metadata):
-        if parameter:
-            xvals.append(meta.get(parameter, None))
-        if series:
-            for sind, sub_meta in enumerate(series):
-                if _check_series(meta=meta, sub_meta=sub_meta):
-                    if outcomes.size == 1:
-                        yvals[sind].append(outcomes[0])
-                    else:
-                        yvals[sind].append(outcomes)
+        # Single or averaged data
+        if outcomes.size == 1:
+            yvals[str(metadata.series)].append(outcomes[0])
         else:
-            if outcomes.size == 1:
-                yvals[0].append(outcomes[0])
-            else:
-                yvals[0].append(outcomes)
+            yvals[str(metadata.series)].append(outcomes)
 
     xvals = np.asarray(xvals, dtype=float)
-
-    if len(yvals) == 1:
-        yvals = np.asarray(yvals[0], dtype=float)
-    else:
-        yvals = {sind: np.asarray(yval, dtype=float) for sind, yval in yvals.items()}
+    yvals = {key: np.asarray(val, dtype=float) for key, val in yvals.items()}
 
     return xvals, yvals
 

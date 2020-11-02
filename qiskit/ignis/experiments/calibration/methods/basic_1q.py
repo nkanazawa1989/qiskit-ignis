@@ -24,6 +24,7 @@ from qiskit.ignis.experiments.calibration import (cal_base_experiment,
                                                   types,
                                                   fitters,
                                                   workflow)
+from qiskit.ignis.experiments.calibration import CalibrationMetadata
 from qiskit.ignis.experiments.base import Generator
 from qiskit.ignis.experiments.calibration.exceptions import CalExpError
 from qiskit.pulse import DriveChannel, Play, Gaussian, Schedule, SetFrequency, ShiftPhase
@@ -120,11 +121,11 @@ class RoughAmplitudeCalibration(cal_base_experiment.BaseCalibrationExperiment):
         amp = table.parametrize(
             instruction=entry,
             qubits=[qubit],
-            param_name='amp'
+            param_name='amp'  # TODO should match the name of parameter
         )
 
         # setup Rabi calibration pulse
-        new_params = {'sigma': sigma, 'duration': duration}
+        new_params = {'sigma': sigma, 'duration': duration, 'amp': amp}
 
         for key, val in new_params.items():
             table.set_parameter(
@@ -134,7 +135,7 @@ class RoughAmplitudeCalibration(cal_base_experiment.BaseCalibrationExperiment):
                 param_value=val
             )
 
-        generator = SinglePulseGenerator(qubit, new_params, amp_vals, 'amp', 'Rabi', pulse_envelope)
+        generator = SinglePulseGenerator(qubit, new_params, amp_vals, amp, 'Rabi', pulse_envelope)
 
         # setup analysis
         if analysis is None:
@@ -160,7 +161,7 @@ class SinglePulseGenerator(Generator):
                  qubit: int,
                  parameters: Dict,
                  values_to_scan: Union[List, np.array],
-                 scanned_parameter: str,
+                 scanned_parameter: Parameter,
                  name: str,
                  pulse: Callable = None):
         """
@@ -182,18 +183,16 @@ class SinglePulseGenerator(Generator):
         self.scanned_parameter = scanned_parameter
         self.qubit = qubit
 
-        # Add the parameter to be scanned if not supplied.
-        if scanned_parameter not in self.parameters:
-            self.parameters[scanned_parameter] = Parameter('α')
-        elif not isinstance(self.parameters[scanned_parameter], ParameterExpression):
-            self.parameters[scanned_parameter] = Parameter('α')
+        # The name of the pulse parameter is the last entry
+        name = self.scanned_parameter.name.split('.')[-1]
+        self.parameters[name] = scanned_parameter
 
         # Define the QuantumCircuit that this generator will use.
         self.template_qcs = []
         qc = QuantumCircuit(1, 1)
-        gate = Gate(scanned_parameter, 1, [self.parameters[scanned_parameter]])
+        gate = Gate(scanned_parameter.name, 1, [scanned_parameter])
         qc.append(gate, [0])
-        qc.add_calibration(gate, [self.qubit], self._schedule(), self.parameters[scanned_parameter])
+        qc.add_calibration(gate, [self.qubit], self._schedule(), scanned_parameter)
         qc.measure(0, 0)
         self.template_qcs.append(qc)
 
@@ -204,14 +203,14 @@ class SinglePulseGenerator(Generator):
         meta data to the circuits.
         """
         qc = self.template_qcs[0]
-        return [qc.assign_parameters({self.parameters[self.scanned_parameter]: val})
+        return [qc.assign_parameters({self.scanned_parameter: val})
                 for val in self.scanned_values]
 
     def _schedule(self) -> Schedule:
         """
         Creates the schedules that will be added to the circuit.
         """
-        sched = Schedule(name=self.scanned_parameter)
+        sched = Schedule(name=self.scanned_parameter.name)
         ch = DriveChannel(self.qubit)
 
         # TODO Some backends apparently don't support SetPhase
@@ -237,10 +236,10 @@ class SinglePulseGenerator(Generator):
         """
         metadata = []
         for val in self.scanned_values:
-            meta = {}
-            ch = DriveChannel(self.qubit)
-            meta[self.scanned_parameter + '.' + ch.name]: val
-
-            metadata.append(meta)
+            x_values = {
+                self.scanned_parameter.name: val
+            }
+            meta = CalibrationMetadata(name=self.name, x_values=x_values)
+            metadata.append(meta.to_dict())
 
         return metadata

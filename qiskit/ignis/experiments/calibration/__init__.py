@@ -11,3 +11,5 @@
 # that they have been altered from the originals.
 
 """Qiskit Ignis calibration module."""
+
+from cal_metadata import CalibrationMetadata
