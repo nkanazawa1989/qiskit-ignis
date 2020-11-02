@@ -25,7 +25,8 @@ class FakeSingleQubitTable(cal_table.ParameterTable):
     def __init__(self,
                  n_qubits: int,
                  default_duration: int = 160,
-                 default_amp: complex = 0.08 + 0.02j,
+                 default_amp: float = 0.08,
+                 default_phase: float = 0,
                  default_sigma: float = 40.,
                  default_beta: float = 1.5,
                  caldate: str = '2020-01-01 00:00:00'):
@@ -35,6 +36,7 @@ class FakeSingleQubitTable(cal_table.ParameterTable):
             n_qubits: Number of qubits in this system.
             default_duration: Duration of single qubit gates.
             default_amp: Amplitude of single qubit gates.
+            default_phase: Phase of single qubit gates.
             default_sigma: Gaussian sigma of single qubit gates.
             default_beta: DRAG beta of single qubit gates.
             caldate: Date of when those parameters are acquired.
@@ -45,6 +47,7 @@ class FakeSingleQubitTable(cal_table.ParameterTable):
         name_map = {
             'duration': default_duration,
             'amp': default_amp,
+            'phase': default_phase,
             'sigma': default_sigma,
             'beta': default_beta
         }
