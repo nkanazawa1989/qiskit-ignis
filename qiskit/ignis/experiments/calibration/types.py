@@ -14,7 +14,6 @@
 
 from enum import Enum
 from typing import List, Dict, Any, Union, NewType, NamedTuple
-
 import numpy as np
 from qiskit.circuit import QuantumCircuit, Parameter
 
@@ -30,6 +29,17 @@ CalProg = NamedTuple(
 CalProg.__doc__ = 'Set of circuit and associated metadata.'
 CalProg.circuits.__doc__ = 'List of calibration circuit.'
 CalProg.metadata.__doc__ = 'List of metadata representing experimental details.'
+
+CalValue = NamedTuple(
+    'CalValue',
+    [('value', Union[int, float, complex]),
+     ('validation', str),
+     ('timestamp', np.datetime64)]
+)
+CalValue.__doc__ = 'Calibrated value with timestamp and status of validation.'
+CalValue.value.__doc__ = 'Value'
+CalValue.validation.__doc__ = 'Calibration data validation status.'
+CalValue.timestamp.__doc__ = 'Time information of when this value is created.'
 
 
 # Fit result
@@ -58,3 +68,9 @@ class SingleQubitAtomicPulses(Enum):
     YP = 'yp'
     YM = 'ym'
     STIM = 'stimulus'
+
+
+class ValidationStatus(Enum):
+    PASS = 'pass'
+    FAIL = 'fail'
+    NONE = 'none'

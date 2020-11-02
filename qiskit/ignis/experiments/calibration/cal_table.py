@@ -12,215 +12,247 @@
 
 """Data source to generate schedule."""
 
-from collections import defaultdict
-from typing import List, Callable, Dict, Union, Iterable
+from typing import Dict, Union, Iterable, Optional, List
 
-from qiskit import pulse, circuit
-from qiskit.circuit import Parameter
+import numpy as np
+import pandas as pd
+
+from qiskit import pulse
 from qiskit.ignis.experiments.calibration import types
-from qiskit.ignis.experiments.calibration.exceptions import CalExpError
 
 
-class AtomicGate:
-    def __init__(self,
-                 name: str,
-                 qubits: List[int],
-                 channel: pulse.channels.PulseChannel,
-                 generator: Callable,
-                 param_names: List[str],
-                 param_vals: List[types.ParamValue]):
-        self.name = name
-        self.qubits = qubits
-        self.channel = channel
-        self.generator = generator
-        self.param_names = param_names
-        self.param_vals = param_vals
+class ParameterTable:
 
-    def __setitem__(self, key: str, value: types.ParamValue):
-        try:
-            self.param_vals[self.param_names.index(key)] = value
-        except ValueError:
-            raise Exception('Parameter {pname} is not defined.'.format(pname=key))
+    def __init__(self, params_collection: pd.DataFrame):
+        self._parameter_collection = params_collection
 
-    def __getitem__(self, key: str):
-        try:
-            return self.param_vals[self.param_names.index(key)]
-        except ValueError:
-            raise Exception('Parameter {pname} is not defined.'.format(pname=key))
+    def get_dataframe(
+            self,
+            qubits: Optional[Union[int, Iterable[int]]] = None,
+            channel: Optional[str] = None,
+            gate_type: Optional[str] = None,
+            name: Optional[str] = None,
+            validation: Optional[str] = None
+    ) -> pd.DataFrame:
+        """Get raw pandas dataframe of search results.
 
-    def schedule(self) -> pulse.Schedule:
-        """Generate pulse schedule of this atomic instruction."""
-        cal_params = dict(zip(self.param_names, self.param_vals))
+        Args:
+            qubits: Index of qubit(s) to search for.
+            channel: Label of pulse channel to search for. Wildcards can be accepted.
+            gate_type: Name of gate to search for. Wildcards can be accepted.
+            name: Name of parameter to search for. Wildcards can be accepted.
+            validation: Status of calibration data validation.
 
-        sideband = cal_params.pop('sideband', 0)
-        phase = cal_params.pop('phase', 0)
+        Returns:
+            Pandas dataframe of matched parameters.
+        """
+        return self._find_data(
+            qubits=qubits,
+            channel=channel,
+            gate_type=gate_type,
+            name=name,
+            validation=validation)
 
-        sched = pulse.Schedule(name=self.name)
+    def get_generator_kwargs(
+            self,
+            qubits: Union[int, Iterable[int]],
+            channel: str,
+            gate_type: str,
+    ) -> Dict[str, Union[int, float, complex]]:
+        """Get kwargs of calibration parameters to feed into experiment generator.
 
-        # modulate frame
-        sched.append(pulse.ShiftPhase(phase, self.channel), inplace=True)
-        sched.append(pulse.ShiftFrequency(sideband, self.channel), inplace=True)
-        # play pulse
-        sched.append(pulse.Play(self.generator(**cal_params, name=self.name), self.channel),
-                     inplace=True)
-        # recover original frame
-        sched.append(pulse.ShiftPhase(-phase, self.channel), inplace=True)
-        sched.append(pulse.ShiftFrequency(-sideband, self.channel), inplace=True)
+        Qubit index, channel and gate type should be specified. Wildcards cannot be used.
+        This returns only latest calibration data and calibration namespace is removed.
 
-        return sched
+        Args:
+            qubits: Index of qubit(s) to search for.
+            channel: Label of pulse channel to search for. Wildcards can be accepted.
+            gate_type: Name of gate to search for. Wildcards can be accepted.
 
-    def gate(self) -> circuit.Gate:
-        """Generate gate of this atomic instruction."""
-        return circuit.Gate(
-            name=self.name,
-            num_qubits=len(self.qubits),
-            params=self.parameters()
+        Returns:
+            Python keyword arguments for experiment generator.
+        """
+        matched_data = self._find_data(
+            qubits=qubits,
+            channel=channel,
+            gate_type=gate_type
+        )
+        params_dict = ParameterTable._flatten(matched_data)
+
+        # pick calibrated value with latest time stamp
+        format_dict = {}
+        for pname, values in params_dict.items():
+            reduced_pname = pname.split('.')[-1]
+            if len(values) > 1:
+                format_dict[reduced_pname] = sorted(values, key=lambda x: x.timestamp)[-1].value
+            else:
+                format_dict[reduced_pname] = values[0].value
+
+        return format_dict
+
+    def get_cal_data(
+            self,
+            qubits: Optional[Union[int, Iterable[int]]] = None,
+            channel: Optional[str] = None,
+            gate_type: Optional[str] = None,
+            name: Optional[str] = None,
+            validation: Optional[str] = None,
+            only_latest: bool = True
+            ) -> Dict[str, Union[types.CalValue, List[types.CalValue]]]:
+        """Get calibration data from the local database.
+
+        This method returns calibration data consist of value, validation result and timestamp.
+        These data are assembled as python NamedTuple.
+        Parameter names are converted into unique name with calibration namespace.
+        For example, if the parameter `amp` is associated with qubit 0, channel `d0`
+        and `x90p` gate, the parameter name becomes `q0.x90p.amp`.
+
+        Args:
+            qubits: Index of qubit(s) to search for.
+            channel: Label of pulse channel to search for. Wildcards can be accepted.
+            gate_type: Name of gate to search for. Wildcards can be accepted.
+            name: Name of parameter to search for. Wildcards can be accepted.
+            validation: Status of calibration data validation.
+            only_latest: Set `True` to only return single parameter with the latest timestamp.
+                If multiple calibration data with different timestamps exist in the
+                database, this method returns all of them as a list.
+
+        Returns:
+            Python dictionary of formatted calibration data.
+        """
+        matched_data = self._find_data(
+            qubits=qubits,
+            channel=channel,
+            gate_type=gate_type,
+            name=name,
+            validation=validation
+        )
+        params_dict = ParameterTable._flatten(matched_data)
+
+        # pick calibrated value with latest time stamp
+        if only_latest:
+            for pname, values in params_dict.items():
+                if len(values) > 1:
+                    params_dict[pname] = sorted(values, key=lambda x: x.timestamp)[-1]
+                else:
+                    params_dict[pname] = values[0]
+
+        return dict(params_dict)
+
+    def set_cal_data(
+            self,
+            qubits: Union[int, Iterable[int]],
+            channel: str,
+            gate_type: str,
+            name: str,
+            cal_data: Union[int, float, complex, types.CalValue]
+    ):
+        """Set calibration data to the local database.
+
+        Args:
+            qubits: Index of qubit(s) to search for.
+            channel: Label of pulse channel to search for.
+            gate_type: Name of gate to search for.
+            name: Name of parameter to search for.
+            cal_data: Parameter value to update. This can be raw value or `CalValue` instance
+                that contains validation status and timestamp.
+                If raw value is provided current time is used for the timestamp.
+        """
+        # prepare data
+        if not isinstance(cal_data, types.CalValue):
+            cal_data = types.CalValue(
+                value=cal_data,
+                validation=types.ValidationStatus.NONE.value,
+                timestamp=pd.Timestamp.now()
+            )
+        if isinstance(qubits, int):
+            qubits = (qubits,)
+        else:
+            qubits = tuple(qubits)
+
+        # add new data series
+        self._parameter_collection = self._parameter_collection.append(
+            {'qubits': qubits,
+             'channel': channel,
+             'gate_type': gate_type,
+             'name': name,
+             'value': cal_data.value,
+             'validation': cal_data.validation,
+             'timestamp': cal_data.timestamp},
+            ignore_index=True
         )
 
-    def parametrize(self, param_name: str) -> Parameter:
-        """Parametrize pulse parameter with name and return parameter handler."""
-        try:
-            # assign unique name. this name is used for metadata dict key so not to overlap.
-            unique_name = '{inst_name}.{chname}.{pname}'.format(
-                inst_name=self.name,
-                chname=self.channel.name,
-                pname=param_name
-            )
-            param_obj = Parameter(unique_name)
-            self.param_vals[self.param_names.index(param_name)] = param_obj
-        except ValueError:
-            raise CalExpError('Parameter {name} is not defined'.format(name=param_name))
+    def _find_data(self,
+                   qubits: Optional[Union[int, List[int]]] = None,
+                   channel: Optional[str] = None,
+                   gate_type: Optional[str] = None,
+                   name: Optional[str] = None,
+                   validation: Optional[str] = None
+                   ) -> pd.DataFrame:
+        """A helper function to return matched dataframe."""
+        flags = []
 
-        return param_obj
+        # filter by qubit index
+        if qubits is not None:
+            if isinstance(qubits, int):
+                qubits = (qubits,)
+            else:
+                qubits = tuple(qubits)
+            flags.append(self._parameter_collection['qubits'] == qubits)
 
-    def parameters(self) -> List[Parameter]:
-        """Return a list of parameter objects associated with this instruction."""
-        return [value for value in self.param_vals if isinstance(value, Parameter)]
+        # filter by pulse channel
+        if channel is not None:
+            flags.append(self._parameter_collection['channel'].str.match(channel))
 
-    def properties(self) -> Dict[str, types.ParamValue]:
-        """Return dictionary of pulse properties."""
-        return dict(zip(self.param_names, self.param_vals))
+        # filter by gate name
+        if gate_type is not None:
+            flags.append(self._parameter_collection['gate_type'].str.match(gate_type))
 
+        # filter by parameter name
+        if name is not None:
+            flags.append(self._parameter_collection['name'].str.match(name))
 
-class CalibrationDataTable:
+        # filter by validation
+        if validation is not None:
+            flags.append(self._parameter_collection['validation'] == validation)
 
-    def __init__(self,
-                 backend_name: str,
-                 num_qubits: int):
-        """Create new table."""
-        self._map = defaultdict(lambda: defaultdict(AtomicGate))
-        self._backend_name = backend_name
-        self._num_qubits = num_qubits
-
-    @property
-    def backend_name(self):
-        """Return backend name."""
-        return self._backend_name
-
-    @property
-    def num_qubits(self):
-        """Return number of qubits of this system."""
-        return self._num_qubits
-
-    def add(self,
-            instruction: str,
-            qubits: Union[int, Iterable[int]],
-            gate: AtomicGate):
-        """Add atomic gate instruction to table."""
-        qubits = CalibrationDataTable._to_tuple(qubits)
-
-        if not isinstance(gate, AtomicGate):
-            raise CalExpError('Supplied component must be a CalibrationComponent.')
-
-        self._map[instruction][qubits] = gate
-
-    def has(self,
-            instruction: str,
-            qubits: Union[int, Iterable[int]]) -> bool:
-        """Check if target instruction is defined."""
-        qubits = CalibrationDataTable._to_tuple(qubits)
-
-        if instruction in self._map and qubits in self._map[instruction]:
-            return True
-        return False
-
-    def get_gate(self,
-                 instruction: str,
-                 qubits: Union[int, Iterable[int]]
-                 ) -> Union[None, circuit.Gate]:
-        """Get atomic gate instruction from table."""
-        qubits = CalibrationDataTable._to_tuple(qubits)
-
-        if self.has(instruction, qubits):
-            return self._map[instruction][qubits].gate()
-
-        return None
-
-    def get_schedule(self,
-                     instruction: str,
-                     qubits: Union[int, Iterable[int]]
-                     ) -> Union[None, pulse.Schedule]:
-        """Get atomic gate schedule from table."""
-        qubits = CalibrationDataTable._to_tuple(qubits)
-
-        if self.has(instruction, qubits):
-            return self._map[instruction][qubits].schedule()
-
-        return None
-
-    def get_parameters(self,
-                       instruction: str,
-                       qubits: Union[int, Iterable[int]]
-                       ) -> Union[None, List[Parameter]]:
-        """Get atomic gate parameters from table."""
-        qubits = CalibrationDataTable._to_tuple(qubits)
-
-        if self.has(instruction, qubits):
-            return self._map[instruction][qubits].parameters()
-
-        return None
-
-    def get_properties(self,
-                       instruction: str,
-                       qubits: Union[int, Iterable[int]]
-                       ) -> Union[None, Dict[str, types.ParamValue]]:
-        """Get atomic gate properties from table."""
-        qubits = CalibrationDataTable._to_tuple(qubits)
-
-        if self.has(instruction, qubits):
-            return self._map[instruction][qubits].properties()
-
-        return None
-
-    def parametrize(self,
-                    instruction: str,
-                    qubits: Union[int, Iterable[int]],
-                    param_name: str) -> Union[None, Parameter]:
-        """Parametrize table item and return parameter handler."""
-        qubits = CalibrationDataTable._to_tuple(qubits)
-
-        if self.has(instruction, qubits):
-            return self._map[instruction][qubits].parametrize(param_name=param_name)
-
-        return None
-
-    def set_parameter(self,
-                      instruction: str,
-                      qubits: Union[int, Iterable[int]],
-                      param_name: str,
-                      param_value: float):
-        """Set parameter value."""
-        qubits = CalibrationDataTable._to_tuple(qubits)
-
-        if self.has(instruction, qubits):
-            self._map[instruction][qubits][param_name] = param_value
+        if flags:
+            return self._parameter_collection[np.logical_and.reduce(flags)]
+        else:
+            return self._parameter_collection
 
     @classmethod
-    def _to_tuple(cls, qubits: Union[int, Iterable[int]]):
-        """A helper function to convert qubits into tuple."""
-        try:
-            qubits = tuple(qubits)
-        except TypeError:
-            qubits = (qubits, )
+    def _flatten(cls, entries: pd.DataFrame) -> Dict[str, List[types.CalValue]]:
+        """A helper function to convert pandas data series into dictionary."""
+        # group duplicated entries
+        grouped_params = entries.groupby(['qubits', 'channel', 'gate_type', 'name']).agg({
+            'value': tuple,
+            'validation': tuple,
+            'timestamp': tuple
+        })
 
-        return qubits
+        flat_dict = {}
+        for keys, series in grouped_params.iterrows():
+            qind_str = 'q' + '_'.join(map(str, keys[0]))
+            pname = '.'.join((qind_str, ) + keys[1:])
+            cal_vals = [types.CalValue(val, validation, timestamp) for
+                        val, validation, timestamp in
+                        zip(series.value, series.validation, series.timestamp)]
+            flat_dict[pname] = cal_vals
+
+        return flat_dict
+
+
+class ScheduleTemplate:
+
+    # TODO: support parametrized schedule, eg Rx(theta) schedule
+
+    def __init__(self, templates: List[Dict[str, Union[str, pulse.Schedule]]]):
+        self._templates = templates
+
+    def get_schedule(self,
+                     qubits: Union[int, Iterable[int]],
+                     name: str,
+                     param_table: ParameterTable):
+        """"""
+        pass
