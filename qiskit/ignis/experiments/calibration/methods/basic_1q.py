@@ -22,16 +22,17 @@ from qiskit.ignis.experiments.calibration import (cal_base_generator,
                                                   types,
                                                   fitters,
                                                   workflow)
-from qiskit.ignis.experiments.calibration import BaseCalibrationExperiment
-from qiskit.ignis.experiments.calibration import CalibrationMetadata, Calibration1DAnalysis
+from qiskit.ignis.experiments.calibration.cal_base_experiment import BaseCalibrationExperiment
+from qiskit.ignis.experiments.calibration import Calibration1DAnalysis
+from qiskit.ignis.experiments.calibration.cal_metadata import CalibrationMetadata
 from qiskit.ignis.experiments.base import Generator
 from qiskit.ignis.experiments.calibration.exceptions import CalExpError
 from qiskit.pulse import DriveChannel, Play, Gaussian, Schedule, SetFrequency, ShiftPhase
 from qiskit import QuantumCircuit
-from qiskit.circuit import Parameter, ParameterExpression, Gate
+from qiskit.circuit import Parameter, Gate
 
 
-class RoughSpectroscopy(cal_base_experiment.BaseCalibrationExperiment):
+class RoughSpectroscopy(BaseCalibrationExperiment):
 
     # pylint: disable=arguments-differ
     def __init__(self,

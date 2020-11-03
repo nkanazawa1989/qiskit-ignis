@@ -1,11 +1,11 @@
-from typing import Union, List
+from typing import Union, List, Dict
 from dataclasses import dataclass
 
 
 @dataclass
 class CalibrationMetadata:
     """
-    This class defines the structure of the meta data that describes
+    CalibrationMetadata defines the structure of the meta data that describes
     calibration experiments. Calibration analysis routines will
     use variables of this class to tie together the results from
     different quantum circuits.
@@ -37,5 +37,7 @@ class CalibrationMetadata:
             'name': self.name,
             'series': self.series,
             'x_values': self.x_values,
-            'pulse_schedule_name': self.pulse_schedule_name
+            'pulse_schedule_name': self.pulse_schedule_name,
+            'exp_id': self.exp_id,
+            'qubits': self.qubits
         }

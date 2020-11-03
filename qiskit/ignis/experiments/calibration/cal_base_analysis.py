@@ -21,7 +21,8 @@ from qiskit.result import Result, Counts
 from scipy import optimize
 
 from qiskit.ignis.experiments.base import Analysis
-from qiskit.ignis.experiments.calibration import types, CalibrationMetadata
+from qiskit.ignis.experiments.calibration import types
+from qiskit.ignis.experiments.calibration.cal_metadata import CalibrationMetadata
 from qiskit.ignis.experiments.calibration.workflow import AnalysisWorkFlow
 
 

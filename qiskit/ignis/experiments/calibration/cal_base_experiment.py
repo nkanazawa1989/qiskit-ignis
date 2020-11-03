@@ -22,7 +22,7 @@ from qiskit.ignis.experiments.base import Experiment
 from qiskit.ignis.experiments.calibration import Calibration1DAnalysis
 from qiskit.ignis.experiments.calibration.exceptions import CalExpError
 from qiskit.ignis.experiments.calibration.workflow import AnalysisWorkFlow
-from qiskit.ignis.experiments.base import Generator
+from qiskit.ignis.experiments.base import Generator, Analysis
 
 
 class BaseCalibrationExperiment(Experiment):
