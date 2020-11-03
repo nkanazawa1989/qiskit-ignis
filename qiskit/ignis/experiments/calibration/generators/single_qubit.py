@@ -63,7 +63,7 @@ class SinglePulseGenerator(cal_base_generator.Base1QCalibrationGenerator):
         cal_sched = self.single_pulse_schedule()
         parameter = list(cal_sched.parameters)[0]
 
-        template_qc = circuit.QuantumCircuit(1, 1, name='single_pulse')
+        template_qc = circuit.QuantumCircuit(1, 1, name='null')
         gate = circuit.Gate(parameter.name, 1, [parameter])
         template_qc.append(gate, [0])
         template_qc.add_calibration(gate, self.qubits, cal_sched, parameter)
