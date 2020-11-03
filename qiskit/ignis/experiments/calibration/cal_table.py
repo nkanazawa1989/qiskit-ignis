@@ -17,11 +17,16 @@ from typing import Dict, Union, Iterable, Optional, List
 import numpy as np
 import pandas as pd
 
-from qiskit import pulse
+from qiskit import pulse, circuit
 from qiskit.ignis.experiments.calibration import types
 
 
 class ParameterTable:
+    """A database to store parameters of pulses.
+
+    Each entry of this database represents a single parameter associated with the specific pulse,
+    and the pulse template is stored in another database.
+    """
 
     def __init__(self, params_collection: pd.DataFrame):
         self._parameter_collection = params_collection
@@ -58,20 +63,41 @@ class ParameterTable:
             qubits: Union[int, Iterable[int]],
             channel: str,
             gate_type: str,
+            parameters: Optional[Union[str, List[str]]] = None,
+            use_complex_amplitude: bool = True,
+            remove_bad_data: bool = True
     ) -> Dict[str, Union[int, float, complex]]:
         """Get kwargs of calibration parameters to feed into experiment generator.
 
         Qubit index, channel and gate type should be specified. Wildcards cannot be used.
         This returns only latest calibration data and calibration namespace is removed.
+        By default amplitude and phase are converted into complex valued amplitude
+        and data entry with bad validation status is not contained in the returned dictionary.
+
+        User can specify a list of parameter names to parametrize.
+        If this list is provided, this method returns keyword arguments filled with
+        Qiskit parameter object to parametrize calibration schedule.
 
         Args:
             qubits: Index of qubit(s) to search for.
             channel: Label of pulse channel to search for. Wildcards can be accepted.
             gate_type: Name of gate to search for. Wildcards can be accepted.
+            parameters: Name of parameter to parametrize.
+                Corresponding calibration data is replaced with Qiskit parameter object.
+            use_complex_amplitude: Set `True` to return complex valued amplitude.
+                If both ``amp`` and ``phase`` exist in the matched entries,
+                this function converts them into single ``amp``.
+            remove_bad_data: Set `True` to check validation status of database entry and
+                filter out bad calibration data to construct valid keyword arguments.
 
         Returns:
             Python keyword arguments for experiment generator.
         """
+        if parameters is None:
+            parameters = []
+        elif isinstance(parameters, str):
+            parameters = [parameters]
+
         matched_data = self._find_data(
             qubits=qubits,
             channel=channel,
@@ -79,14 +105,32 @@ class ParameterTable:
         )
         params_dict = ParameterTable._flatten(matched_data)
 
-        # pick calibrated value with latest time stamp
+        # format dictionary
         format_dict = {}
         for pname, values in params_dict.items():
             reduced_pname = pname.split('.')[-1]
+            # parametrize the parameter
+            if reduced_pname in parameters:
+                format_dict[reduced_pname] = circuit.Parameter(pname)
+                continue
+            # find database entry with latest timestamp
             if len(values) > 1:
+                # filter out bad data
+                if remove_bad_data:
+                    values = [val for val in values
+                              if val.validation != types.ValidationStatus.FAIL.value]
                 format_dict[reduced_pname] = sorted(values, key=lambda x: x.timestamp)[-1].value
             else:
                 format_dict[reduced_pname] = values[0].value
+
+        # convert (amp, phase) pair into complex value
+        if use_complex_amplitude:
+            if 'amp' in format_dict and 'phase' in format_dict:
+                format_dict['amp'] *= np.exp(1j * format_dict.pop('phase'))
+
+        # convert duration into integer
+        if 'duration' in format_dict and isinstance(format_dict['duration'], float):
+            format_dict['duration'] = int(format_dict['duration'])
 
         return format_dict
 
@@ -98,7 +142,7 @@ class ParameterTable:
             name: Optional[str] = None,
             validation: Optional[str] = None,
             only_latest: bool = True
-            ) -> Dict[str, Union[types.CalValue, List[types.CalValue]]]:
+    ) -> Dict[str, Union[types.CalValue, List[types.CalValue]]]:
         """Get calibration data from the local database.
 
         Return the calibration data as parameter value, validation result and timestamp
@@ -182,13 +226,14 @@ class ParameterTable:
             ignore_index=True
         )
 
-    def _find_data(self,
-                   qubits: Optional[Union[int, List[int]]] = None,
-                   channel: Optional[str] = None,
-                   gate_type: Optional[str] = None,
-                   name: Optional[str] = None,
-                   validation: Optional[str] = None
-                   ) -> pd.DataFrame:
+    def _find_data(
+            self,
+            qubits: Optional[Union[int, List[int]]] = None,
+            channel: Optional[str] = None,
+            gate_type: Optional[str] = None,
+            name: Optional[str] = None,
+            validation: Optional[str] = None
+    ) -> pd.DataFrame:
         """A helper function to return matched dataframe."""
         flags = []
 
