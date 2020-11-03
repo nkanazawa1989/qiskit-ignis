@@ -71,19 +71,6 @@ class Calibration1DAnalysis(Analysis):
         return self._x_values
 
     @property
-    def parameter(self):
-        """Return parameter to scan."""
-        return self._parameter
-
-    @parameter.setter
-    def parameter(self, parameter: Union[Parameter, str]):
-        """Add new parameter."""
-        if isinstance(parameter, Parameter):
-            self._parameter = parameter.name
-        else:
-            self._parameter = parameter
-
-    @property
     def workflow(self):
         """Return data processing routine."""
         return self._workflow
@@ -147,8 +134,8 @@ class Calibration1DAnalysis(Analysis):
 
         ax.set_xlim(self.x_values[0], self.x_values[-1])
 
-        ax.set_xlabel(kwargs.get('xlabel', self.parameter), fontsize=14)
-        ax.set_ylabel(kwargs.get('ylabel', 'Signal'), fontsize=14)
+        ax.set_xlabel(kwargs.get('xlabel', kwargs.get('xlabel', 'Parameter')), fontsize=14)
+        ax.set_ylabel(kwargs.get('ylabel', kwargs.get('ylabel', 'Signal')), fontsize=14)
 
         if matplotlib.get_backend() in ['module://ipykernel.pylab.backend_inline',
                                         'nbAgg']:

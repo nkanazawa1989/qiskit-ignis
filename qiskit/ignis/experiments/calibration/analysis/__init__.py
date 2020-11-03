@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 # This code is part of Qiskit.
 #
 # (C) Copyright IBM 2020.
@@ -9,11 +11,10 @@
 # Any modifications or derivative works of this code must retain this
 # copyright notice, and modified files need to carry a notice indicating
 # that they have been altered from the originals.
+"""
+Fitter modules.
+"""
 
-"""Qiskit Ignis calibration methods for single qubit."""
+from qiskit.ignis.experiments.calibration.analysis.trigonometric import CosinusoidalFit
 
-from qiskit.ignis.experiments.calibration.sequences.sequences_1q import (
-    amp_error_amplification,
-    rabi,
-    ramsey_xy
-)
+from qiskit.ignis.experiments.calibration.analysis.peak import GaussianFit

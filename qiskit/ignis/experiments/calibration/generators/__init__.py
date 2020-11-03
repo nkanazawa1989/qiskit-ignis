@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 # This code is part of Qiskit.
 #
 # (C) Copyright IBM 2020.
@@ -11,10 +9,7 @@
 # Any modifications or derivative works of this code must retain this
 # copyright notice, and modified files need to carry a notice indicating
 # that they have been altered from the originals.
-"""
-Fitter modules.
-"""
 
-from qiskit.ignis.experiments.calibration.fitters.trigonometric import CosinusoidalFit
-
-from qiskit.ignis.experiments.calibration.fitters.peak import GaussianFit
+from qiskit.ignis.experiments.calibration.generators.single_qubit import (
+    SinglePulseGenerator
+)

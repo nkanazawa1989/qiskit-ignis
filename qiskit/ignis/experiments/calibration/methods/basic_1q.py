@@ -12,82 +12,73 @@
 
 """Data source to generate schedule."""
 
-from typing import Optional, List, Callable, Union, Dict
+from typing import Optional, Callable
 
 import numpy as np
+from qiskit import circuit
 
-from qiskit.ignis.experiments.calibration import (cal_base_generator,
+from qiskit.ignis.experiments.calibration import (types,
+                                                  generators,
+                                                  analysis,
+                                                  workflow,
                                                   cal_table,
-                                                  sequences,
-                                                  types,
-                                                  fitters,
-                                                  workflow)
+                                                  Calibration1DAnalysis)
 from qiskit.ignis.experiments.calibration.cal_base_experiment import BaseCalibrationExperiment
-from qiskit.ignis.experiments.calibration import Calibration1DAnalysis
-from qiskit.ignis.experiments.calibration.cal_metadata import CalibrationMetadata
-from qiskit.ignis.experiments.base import Generator
-from qiskit.ignis.experiments.calibration.exceptions import CalExpError
-from qiskit.pulse import DriveChannel, Play, Gaussian, Schedule, SetFrequency, ShiftPhase
-from qiskit import QuantumCircuit
-from qiskit.circuit import Parameter, Gate
 
 
 class RoughSpectroscopy(BaseCalibrationExperiment):
+    """Performs a frequency spectroscopy by scanning the drive channel frequency."""
 
-    # pylint: disable=arguments-differ
     def __init__(self,
-                 table: cal_table.CalibrationDataTable,
+                 table: cal_table.ParameterTable,
                  qubit: int,
                  data_processing: workflow.AnalysisWorkFlow,
                  freq_vals: np.ndarray,
-                 amplitude: float = 0.05,
-                 sigma: float = 360,
-                 duration: int = 1440,
-                 analysis: Optional[Calibration1DAnalysis] = None,
-                 job: Optional = None):
-        entry = types.SingleQubitAtomicPulses.STIM.value
+                 analysis_class: Optional[Calibration1DAnalysis] = None,
+                 job: Optional = None,
+                 pulse_envelope: Optional[Callable] = None,
+                 pulse_name: Optional[str] = types.SingleQubitPulses.XP.value):
+        """Create new rabi amplitude experiment.
 
-        if not table.has(instruction=entry, qubits=[qubit]):
-            raise CalExpError('Entry {name} does not exist. '
-                              'Check your calibration table.'.format(name=entry))
-
-        # setup spectroscopy pulse
-        new_params = {'amp': amplitude, 'sigma': sigma, 'duration': duration}
-
-        for key, val in new_params.items():
-            table.set_parameter(
-                instruction=entry,
-                qubits=[qubit],
-                param_name=key,
-                param_value=val
-            )
-
-        # parametrize table
-        freq = table.parametrize(
-            instruction=entry,
-            qubits=[qubit],
-            param_name='sideband'
+        Args:
+            table:
+            qubit: Qubit on which to run the calibration.
+            data_processing: Steps used to process the data from the Result.
+            freq_vals: Frequency values to scan in the calibration.
+            analysis_class: Analysis class used.
+            job: Optional job id to retrive past expereiments.
+            pulse_envelope: Name of the pulse function used to generate the
+                pulse schedule. If not specified, the default pulse shape of
+                :py:class:`SinglePulseGenerator` is used.
+            pulse_name: Pulse name in the database entry to provide parameter set to
+                construct pulse schedule to calibrate. By default pi pulse parameter is used.
+        """
+        params, param_dict = table.get_generator_kwargs(
+            qubits=qubit,
+            channel='d*',
+            gate_type=pulse_name
         )
 
-        # setup generator
-        generator = cal_base_generator.BaseCalibrationGenerator(
-            cal_name='rough_spectroscopy',
-            target_qubits=[qubit],
-            cal_generator=sequences.rabi,
-            table=table,
-            meas_basis='z'
-        )
-        generator.assign_parameters({freq: freq_vals})
+        # todo get qubit property from other database.
+        # channel ref frequency is different from pulse sideband and thus
+        # this value is stored in another relational database from parameter table.
+        # something like qubit property where f01, anharmonicity, T1, T2, etc... exist.
+        freq01 = circuit.Parameter('q{ind}.d{ind}.f01'.format(ind=qubit))
+
+        generator = generators.SinglePulseGenerator(
+            name='rough_spectroscopy',
+            qubit=qubit,
+            parameters=param_dict,
+            values_to_scan=freq_vals,
+            ref_frequency=freq01,
+            pulse_envelope=pulse_envelope)
 
         # setup analysis
-        if analysis is None:
-            analysis = fitters.GaussianFit(
-                name='rough_spectroscopy'
-            )
-        analysis.parameter = freq
+        if analysis_class is None:
+            analysis_class = analysis.GaussianFit(name=generator.name)
 
         super().__init__(generator=generator,
-                         analysis=analysis,
+                         analysis=analysis_class,
                          job=job,
                          workflow=data_processing)
 
@@ -95,155 +86,56 @@ class RoughSpectroscopy(BaseCalibrationExperiment):
 class RoughAmplitudeCalibration(BaseCalibrationExperiment):
     """Performs a rough amplitude calibration by scanning the amplitude of the pulse."""
 
-    # pylint: disable=arguments-differ
     def __init__(self,
-                 table: cal_table.CalibrationDataTable,
+                 table: cal_table.ParameterTable,
                  qubit: int,
                  data_processing: workflow.AnalysisWorkFlow,
                  amp_vals: np.ndarray,
-                 pulse_params: dict,
-                 analysis: Optional[Calibration1DAnalysis] = None,
+                 analysis_class: Optional[Calibration1DAnalysis] = None,
                  job: Optional = None,
-                 pulse_envelope: Optional[Callable] = Gaussian):
-        """
+                 pulse_envelope: Optional[Callable] = None,
+                 pulse_name: Optional[str] = types.SingleQubitPulses.XP.value):
+        """Create new rabi amplitude experiment.
+
         Args:
             table:
             qubit: Qubit on which to run the calibration.
             data_processing: Steps used to process the data from the Result.
             amp_vals: Amplitude values to scan in the calibration.
-            pulse_params: Parameters of the pulse. These need to match the
-                definition of the pulse_envelope being used.
-            analysis: Analysis class used.
+            analysis_class: Analysis class used.
             job: Optional job id to retrive past expereiments.
             pulse_envelope: Name of the pulse function used to generate the
-                pulse schedule.
+                pulse schedule. If not specified, the default pulse shape of
+                :py:class:`SinglePulseGenerator` is used.
+            pulse_name: Pulse name in the database entry to provide parameter set to
+                construct pulse schedule to calibrate. By default pi pulse parameter is used.
         """
-        entry = types.SingleQubitAtomicPulses.STIM.value
-
-        if not table.has(instruction=entry, qubits=[qubit]):
-            raise CalExpError('Entry {name} does not exist. '
-                              'Check your calibration table.'.format(name=entry))
-
-        # parametrize table
-        amp = table.parametrize(
-            instruction=entry,
-            qubits=[qubit],
-            param_name='amp'
+        params, param_dict = table.get_generator_kwargs(
+            qubits=qubit,
+            channel='d*',
+            gate_type=pulse_name,
+            parameters='amp'
         )
 
-        # Store the parameters in the table.
-        for key, val in pulse_params.items():
-            table.set_parameter(
-                instruction=entry,
-                qubits=[qubit],
-                param_name=key,
-                param_value=val
-            )
+        # todo get qubit property from other database.
+        # channel ref frequency is different from pulse sideband and thus
+        # this value is stored in another relational database from parameter table.
+        # something like qubit property where f01, anharmonicity, T1, T2, etc... exist.
+        freq01 = None
 
-        generator = SinglePulseGenerator(qubit, pulse_params, amp_vals, amp, 'Rabi', pulse_envelope)
+        generator = generators.SinglePulseGenerator(
+            name='power_Rabi',
+            qubit=qubit,
+            parameters=param_dict,
+            values_to_scan=amp_vals,
+            ref_frequency=freq01,
+            pulse_envelope=pulse_envelope)
 
         # setup analysis
-        if analysis is None:
-            analysis = fitters.CosinusoidalFit(name=generator.name)
-
-        analysis.parameter = amp
+        if analysis_class is None:
+            analysis_class = analysis.CosinusoidalFit(name=generator.name)
 
         super().__init__(generator=generator,
-                         analysis=analysis,
+                         analysis=analysis_class,
                          job=job,
                          workflow=data_processing)
-
-
-class SinglePulseGenerator(Generator):
-    """
-    A generator that generates single pulses and scans a single parameter
-    of that pulse. Note that the same pulse may be applied to multiple qubits
-    to perform simultaneous calibration.
-    """
-
-    def __init__(self,
-                 qubit: int,
-                 parameters: Dict,
-                 values_to_scan: Union[List, np.array],
-                 scanned_parameter: Parameter,
-                 name: str,
-                 pulse: Callable = None):
-        """
-        Args:
-            qubit: The qubit to which we will add the calibration.
-            parameters: The arguments for the pulse schedule.
-            values_to_scan: A list of amplitudes for which to generate a circuit.
-            scanned_parameter: Name of the scanned parameter. If it is not present
-                in the parameters dictionary as a ParameterExpression it will
-                be added to this dict.
-            pulse: A parametric pulse function used to generate the schedule
-                that is added to the circuits. This defaults to Gaussian and
-                parameters should contain 'duration', and 'sigma'.
-        """
-        super().__init__(name, [0])
-        self._pulse = pulse
-        self.parameters = parameters
-        self.scanned_values = values_to_scan
-        self.scanned_parameter = scanned_parameter
-        self.qubit = qubit
-
-        # The name of the pulse parameter is the last entry
-        name = self.scanned_parameter.name.split('.')[-1]
-        self.parameters[name] = scanned_parameter
-
-        # Define the QuantumCircuit that this generator will use.
-        self.template_qcs = []
-        qc = QuantumCircuit(1, 1)
-        gate = Gate(scanned_parameter.name, 1, [scanned_parameter])
-        qc.append(gate, [0])
-        qc.add_calibration(gate, [self.qubit], self._schedule(), scanned_parameter)
-        qc.measure(0, 0)
-        self.template_qcs.append(qc)
-
-    def circuits(self) -> List[QuantumCircuit]:
-        """
-        Return a list of experiment circuits.
-        This function is also responsible for adding the
-        meta data to the circuits.
-        """
-        qc = self.template_qcs[0]
-        return [qc.assign_parameters({self.scanned_parameter: val})
-                for val in self.scanned_values]
-
-    def _schedule(self) -> Schedule:
-        """
-        Creates the schedules that will be added to the circuit.
-        """
-        sched = Schedule(name=self.scanned_parameter.name)
-        ch = DriveChannel(self.qubit)
-
-        # TODO Some backends apparently don't support SetPhase
-        sched += sched.insert(0, SetFrequency(self.parameters.get('frequency', 0.), ch))
-        sched += sched.insert(0, ShiftPhase(self.parameters.get('phase', 0.), ch))
-
-        # Frequency shift and phase shift are not part of a pulse.
-        params = {}
-        for key, value in self.parameters.items():
-            if key not in ['frequency', 'phase']:
-                params[key] = value
-
-        if self._pulse is None:
-            sched += sched.insert(0, Play(Gaussian(**params), ch))
-        else:
-            sched += sched.insert(0, Play(self._pulse(**params), ch))
-
-        return sched
-
-    def _extra_metadata(self):
-        """
-        Creates the metadata for the experiment.
-        """
-        metadata = []
-        for val in self.scanned_values:
-            x_values = {
-                self.scanned_parameter.name: val
-            }
-            meta = CalibrationMetadata(name=self.name, x_values=x_values)
-            metadata.append(meta.to_dict())
-
-        return metadata

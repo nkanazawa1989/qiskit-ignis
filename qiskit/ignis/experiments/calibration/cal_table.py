@@ -66,7 +66,7 @@ class ParameterTable:
             parameters: Optional[Union[str, List[str]]] = None,
             use_complex_amplitude: bool = True,
             remove_bad_data: bool = True
-    ) -> Dict[str, Union[int, float, complex]]:
+    ) -> Dict[str, Union[int, float, complex, circuit.Parameter]]:
         """Get kwargs of calibration parameters to feed into experiment generator.
 
         Qubit index, channel and gate type should be specified. Wildcards cannot be used.
