@@ -81,7 +81,7 @@ class ParameterTable:
         Args:
             qubits: Index of qubit(s) to search for.
             channel: Label of pulse channel to search for. Wildcards can be accepted.
-            gate_type: Name of gate to search for. Wildcards can be accepted.
+            gate_type: Name of gate to search for.
             parameters: Name of parameter to parametrize.
                 Corresponding calibration data is replaced with Qiskit parameter object.
             use_complex_amplitude: Set `True` to return complex valued amplitude.
