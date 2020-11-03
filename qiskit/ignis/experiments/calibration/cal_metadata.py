@@ -19,7 +19,7 @@ class CalibrationMetadata:
 
     # A dictionary of x-values the structure of this dict will
     # depend on the experiment being run.
-    x_values: dict = None
+    x_values: Dict[str, Union[int, float, complex]]= None
 
     # The series of the Experiment to which the circuit is
     # attached to. E.g. 'X' or 'Y' for Ramsey measurements.

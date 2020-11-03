@@ -29,7 +29,7 @@ class BaseCalibrationExperiment(Experiment):
     """An experiment class for a calibration experiment."""
     def __init__(self,
                  generator: Optional[Generator] = None,
-                 analysis: Optional[Calibration1DAnalysis] = None,
+                 analysis: Optional[Analysis] = None,
                  job: Optional[BaseJob] = None,
                  workflow: Optional[AnalysisWorkFlow] = None):
         """Initialize an experiment."""
