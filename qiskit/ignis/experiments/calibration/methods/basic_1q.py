@@ -61,8 +61,8 @@ class RoughSpectroscopy(BaseCalibrationExperiment):
 
         # todo get qubit property from other database.
         # channel ref frequency is different from pulse sideband and thus
-        # this value is stored in another relational database from parameter table.
-        # something like qubit property where f01, anharmonicity, T1, T2, etc... exist.
+        # this value is stored in another relational database.
+        # something like qubit property table where f01, anharmonicity, T1, T2, etc... exist.
         freq01 = circuit.Parameter('q{ind}.d{ind}.f01'.format(ind=qubit))
 
         generator = generators.SinglePulseGenerator(
@@ -119,8 +119,8 @@ class RoughAmplitudeCalibration(BaseCalibrationExperiment):
 
         # todo get qubit property from other database.
         # channel ref frequency is different from pulse sideband and thus
-        # this value is stored in another relational database from parameter table.
-        # something like qubit property where f01, anharmonicity, T1, T2, etc... exist.
+        # this value is stored in another relational database.
+        # something like qubit property table where f01, anharmonicity, T1, T2, etc... exist.
         freq01 = None
 
         generator = generators.SinglePulseGenerator(
