@@ -101,11 +101,11 @@ class ParameterTable:
             ) -> Dict[str, Union[types.CalValue, List[types.CalValue]]]:
         """Get calibration data from the local database.
 
-        This method returns calibration data consist of value, validation result and timestamp.
-        These data are assembled as python NamedTuple.
-        Parameter names are converted into unique name with calibration namespace.
-        For example, if the parameter `amp` is associated with qubit 0, channel `d0`
-        and `x90p` gate, the parameter name becomes `q0.x90p.amp`.
+        Return the calibration data as parameter value, validation result and timestamp
+        assembled in a python NamedTuple.
+        Parameter names are unique within the calibration namespace.
+        For example, the parameter `amp` associated with qubit 0, channel `d0`
+        and `x90p` gate has the unique name `q0.x90p.amp`.
 
         Args:
             qubits: Index of qubit(s) to search for.
