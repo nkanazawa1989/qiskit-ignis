@@ -53,7 +53,7 @@ class RoughSpectroscopy(BaseCalibrationExperiment):
             pulse_name: Pulse name in the database entry to provide parameter set to
                 construct pulse schedule to calibrate. By default pi pulse parameter is used.
         """
-        params, param_dict = table.get_generator_kwargs(
+        param_dict = table.get_generator_kwargs(
             qubits=qubit,
             channel='d*',
             gate_type=pulse_name
@@ -110,7 +110,7 @@ class RoughAmplitudeCalibration(BaseCalibrationExperiment):
             pulse_name: Pulse name in the database entry to provide parameter set to
                 construct pulse schedule to calibrate. By default pi pulse parameter is used.
         """
-        params, param_dict = table.get_generator_kwargs(
+        param_dict = table.get_generator_kwargs(
             qubits=qubit,
             channel='d*',
             gate_type=pulse_name,
