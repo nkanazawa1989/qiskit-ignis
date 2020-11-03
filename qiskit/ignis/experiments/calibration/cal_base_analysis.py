@@ -128,6 +128,7 @@ class Calibration1DAnalysis(Analysis):
     def plot(self, ax: Optional['Axis'] = None, **kwargs) -> 'Figure':
         import matplotlib
         import matplotlib.pyplot as plt
+        from matplotlib.pyplot import cm
 
         if ax:
             figure = ax.figure
@@ -137,10 +138,12 @@ class Calibration1DAnalysis(Analysis):
 
         xval_interp = np.linspace(self.x_values[0], self.x_values[-1], 100)
 
+        idx = 0
         for series, yvals in self._series.items():
             yval_fit = self.fit_function(xval_interp, *self._result[series].fitval)
-            ax.plot(xval_interp, yval_fit, '--', color='k')
-            ax.plot(self.x_values, yvals, 'o')
+            ax.plot(xval_interp, yval_fit, '--', color=cm.tab20.colors[(2*idx+1) % cm.tab20.N])
+            ax.plot(self.x_values, yvals, 'o', color=cm.tab20.colors[(2*idx) % cm.tab20.N])
+            idx += 1
 
         ax.set_xlim(self.x_values[0], self.x_values[-1])
 
