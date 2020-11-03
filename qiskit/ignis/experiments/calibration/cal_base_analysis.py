@@ -22,10 +22,11 @@ from scipy import optimize
 
 from qiskit.ignis.experiments.base import Analysis
 from qiskit.ignis.experiments.calibration import types
+from qiskit.ignis.experiments.calibration.cal_metadata import CalibrationMetadata
 from qiskit.ignis.experiments.calibration.workflow import AnalysisWorkFlow
 
 
-class BaseCalibrationAnalysis(Analysis):
+class Calibration1DAnalysis(Analysis):
     """Calibration experiment analysis."""
 
     def __init__(self,
@@ -51,7 +52,8 @@ class BaseCalibrationAnalysis(Analysis):
         # Workflow for measurement data processing
         self._workflow = None
         self._parameter = None
-        self._series = []
+        self._series = {}
+        self._x_values = None
 
         super().__init__(data=data,
                          metadata=metadata,
@@ -63,10 +65,10 @@ class BaseCalibrationAnalysis(Analysis):
         """Return data series dictionaries."""
         return self._series
 
-    @series.setter
-    def series(self, new_series: Dict[str, Any]):
-        """Add new data series."""
-        self._series.append(new_series)
+    @property
+    def x_values(self) -> list:
+        """X-values of the data."""
+        return self._x_values
 
     @property
     def parameter(self):
@@ -126,6 +128,7 @@ class BaseCalibrationAnalysis(Analysis):
     def plot(self, ax: Optional['Axis'] = None, **kwargs) -> 'Figure':
         import matplotlib
         import matplotlib.pyplot as plt
+        from matplotlib.pyplot import cm
 
         if ax:
             figure = ax.figure
@@ -133,13 +136,16 @@ class BaseCalibrationAnalysis(Analysis):
             figure = plt.figure(figsize=kwargs.get('figsize', (6, 4)))
             ax = figure.add_subplot(111)
 
-        xval_interp = np.linspace(self._result.xvals[0], self._result.xvals[-1], 100)
-        yval_fit = self.fit_function(xval_interp, *self._result.fitval)
+        xval_interp = np.linspace(self.x_values[0], self.x_values[-1], 100)
 
-        ax.plot(xval_interp, yval_fit, '--', color='blue')
-        ax.plot(self._result.xvals, self._result.yvals, 'o', color='blue')
+        idx = 0
+        for series, yvals in self._series.items():
+            yval_fit = self.fit_function(xval_interp, *self._result[series].fitval)
+            ax.plot(xval_interp, yval_fit, '--', color=cm.tab20.colors[(2*idx+1) % cm.tab20.N])
+            ax.plot(self.x_values, yvals, 'o', color=cm.tab20.colors[(2*idx) % cm.tab20.N])
+            idx += 1
 
-        ax.set_xlim(self._result.xvals[0], self._result.xvals[-1])
+        ax.set_xlim(self.x_values[0], self.x_values[-1])
 
         ax.set_xlabel(kwargs.get('xlabel', self.parameter), fontsize=14)
         ax.set_ylabel(kwargs.get('ylabel', 'Signal'), fontsize=14)
@@ -157,36 +163,44 @@ class BaseCalibrationAnalysis(Analysis):
             any: the output of the analysis,
         """
         xvals, yvals = _create_data_vector(data=self.data,
-                                           metadata=self.metadata,
-                                           parameter=self.parameter,
-                                           series=self.series)
+                                           metadata_list=self.metadata)
 
         # fit for each initial guess
         result = None
-        for initial_guess in self.initial_guess(xvals, yvals):
-            p_opt, p_cov = optimize.curve_fit(self.fit_function,
-                                              xdata=xvals,
-                                              ydata=yvals,
-                                              p0=initial_guess,
-                                              bounds=self.fit_boundary(xvals, yvals))
+        self._result = {}
+        for series_key, yvals in yvals.items():
+            for initial_guess in self.initial_guess(xvals, yvals):
+                try:
+                    p_opt, p_cov = optimize.curve_fit(self.fit_function,
+                                                      xdata=xvals,
+                                                      ydata=yvals,
+                                                      p0=initial_guess,
+                                                      bounds=self.fit_boundary(xvals, yvals))
 
-            # calculate chi square
-            chi_sq = _calculate_chisq(xvals=xvals,
-                                      yvals=yvals,
-                                      fit_yvals=self.fit_function(xvals, *p_opt),
-                                      n_params=len(initial_guess))
-            # calculate standard deviation
-            stdev = np.sqrt(np.diag(p_cov))
+                    # calculate chi square
+                    chi_sq = _calculate_chisq(xvals=xvals,
+                                              yvals=yvals,
+                                              fit_yvals=self.fit_function(xvals, *p_opt),
+                                              n_params=len(initial_guess))
+                    # calculate standard deviation
+                    stdev = np.sqrt(np.diag(p_cov))
 
-            if result is None or result.chisq > chi_sq:
-                result = types.FitResult(fitval=p_opt,
-                                         stdev=stdev,
-                                         chisq=chi_sq,
-                                         xvals=xvals,
-                                         yvals=yvals)
+                    if result is None or result.chisq > chi_sq:
+                        result = types.FitResult(fitval=p_opt,
+                                                 stdev=stdev,
+                                                 chisq=chi_sq,
+                                                 xvals=xvals,
+                                                 yvals=yvals)
 
-        # keep the best result
-        self._result = result
+                # Fitting may fail. For now pass but perhaps log
+                except RuntimeError:
+                    pass
+
+            # keep the best result
+            self._series[series_key] = yvals
+            self._result[series_key] = result
+
+        self._x_values = xvals
 
         return self._result
 
@@ -204,56 +218,37 @@ class BaseCalibrationAnalysis(Analysis):
 
 
 def _create_data_vector(data: List[np.ndarray],
-                        metadata: List[Dict[str, Any]],
-                        parameter: Optional[str] = None,
-                        series: Optional[List[Dict[str, Any]]] = None
-                        ) -> Tuple[np.ndarray, Union[np.ndarray, Dict[int, np.ndarray]]]:
+                        metadata_list: List[Dict[str, any]],
+                        ) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
     """A helper function to extract xvalue and y value vectors from a set of
     data list and metadata.
 
-    If multiple series labels are provided, y values are returned as a dictionary
-    associated with each data series.
+    x values are returned as a list as this is a 1DCalibration analysis.
+    y values are returned as a dictionary associated with each data series.
 
     Args:
-        data: List of formatted data.
-        metadata: List of metadata representing experimental condition.
-        parameter: Name of parameter to scan.
-        series: Partial dictionary to represent a subset of experiment.
+        data: List of formatted data extracted from a Result class.
+        metadata_list: List of metadata representing experimental condition.
+            This should have the same length as data.
 
     Returns:
-        Data vectors of scanning parameters and outcomes.
+        x values and y values.
     """
     xvals = []
     yvals = defaultdict(list)
 
-    def _check_series(meta: Dict[str, Any], sub_meta: Dict[str, Any]):
-        for key, val in sub_meta.items():
-            if meta[key] != val:
-                return False
-        return True
+    for outcomes, meta in zip(data, metadata_list):
+        metadata = CalibrationMetadata(**meta)
+        xvals.append(next(iter(metadata.x_values.values())))
 
-    for outcomes, meta in zip(data, metadata):
-        if parameter:
-            xvals.append(meta.get(parameter, None))
-        if series:
-            for sind, sub_meta in enumerate(series):
-                if _check_series(meta=meta, sub_meta=sub_meta):
-                    if outcomes.size == 1:
-                        yvals[sind].append(outcomes[0])
-                    else:
-                        yvals[sind].append(outcomes)
+        # Single or averaged data
+        if outcomes.size == 1:
+            yvals[str(metadata.series)].append(outcomes[0])
         else:
-            if outcomes.size == 1:
-                yvals[0].append(outcomes[0])
-            else:
-                yvals[0].append(outcomes)
+            yvals[str(metadata.series)].append(outcomes)
 
     xvals = np.asarray(xvals, dtype=float)
-
-    if len(yvals) == 1:
-        yvals = np.asarray(yvals[0], dtype=float)
-    else:
-        yvals = {sind: np.asarray(yval, dtype=float) for sind, yval in yvals.items()}
+    yvals = {key: np.asarray(val, dtype=float) for key, val in yvals.items()}
 
     return xvals, yvals
 

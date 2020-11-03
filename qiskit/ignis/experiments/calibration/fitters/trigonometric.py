@@ -13,9 +13,9 @@
 import numpy as np
 
 from scipy import signal
-from typing import Iterator, Tuple, List
+from typing import Iterator, Tuple, List, Dict
 
-from qiskit.ignis.experiments.calibration import cal_base_fitter
+from qiskit.ignis.experiments.calibration import Calibration1DAnalysis
 
 
 def _freq_guess(xvals: np.ndarray, yvals: np.ndarray):
@@ -37,7 +37,7 @@ def _freq_guess(xvals: np.ndarray, yvals: np.ndarray):
     return f0_guess
 
 
-class CosinusoidalFit(cal_base_fitter.BaseCalibrationAnalysis):
+class CosinusoidalFit(Calibration1DAnalysis):
     r"""Fit with $F(x) = a \cos(2\pi f x + \phi) + b$."""
 
     @classmethod
@@ -47,7 +47,7 @@ class CosinusoidalFit(cal_base_fitter.BaseCalibrationAnalysis):
 
         y_mean = np.mean(yvals)
         a0 = np.max(np.abs(yvals)) - np.abs(y_mean)
-        f0 = _freq_guess(xvals, yvals)
+        f0 = max(0, _freq_guess(xvals, yvals))
 
         for phi in np.linspace(-np.pi, np.pi, 10):
             yield np.array([a0, f0, phi, y_mean])

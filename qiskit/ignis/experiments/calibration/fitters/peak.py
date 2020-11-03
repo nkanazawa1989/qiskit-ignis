@@ -15,10 +15,10 @@ import numpy as np
 from typing import Iterator, Tuple, List
 
 
-from qiskit.ignis.experiments.calibration import cal_base_fitter
+from qiskit.ignis.experiments.calibration import Calibration1DAnalysis
 
 
-class GaussianFit(cal_base_fitter.BaseCalibrationAnalysis):
+class GaussianFit(Calibration1DAnalysis):
     r"""Fit with $F(x) = a \exp(\frac{(x-x_0)^2}{2\sigma^2}) + b$."""
 
     @classmethod

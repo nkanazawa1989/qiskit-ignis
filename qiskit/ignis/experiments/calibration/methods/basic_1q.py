@@ -16,22 +16,23 @@ from typing import Optional, List, Callable, Union, Dict
 
 import numpy as np
 
-from qiskit.ignis.experiments.calibration import (cal_base_experiment,
-                                                  cal_base_generator,
-                                                  cal_base_fitter,
+from qiskit.ignis.experiments.calibration import (cal_base_generator,
                                                   cal_table,
                                                   sequences,
                                                   types,
                                                   fitters,
                                                   workflow)
+from qiskit.ignis.experiments.calibration.cal_base_experiment import BaseCalibrationExperiment
+from qiskit.ignis.experiments.calibration import Calibration1DAnalysis
+from qiskit.ignis.experiments.calibration.cal_metadata import CalibrationMetadata
 from qiskit.ignis.experiments.base import Generator
 from qiskit.ignis.experiments.calibration.exceptions import CalExpError
 from qiskit.pulse import DriveChannel, Play, Gaussian, Schedule, SetFrequency, ShiftPhase
 from qiskit import QuantumCircuit
-from qiskit.circuit import Parameter, ParameterExpression, Gate
+from qiskit.circuit import Parameter, Gate
 
 
-class RoughSpectroscopy(cal_base_experiment.BaseCalibrationExperiment):
+class RoughSpectroscopy(BaseCalibrationExperiment):
 
     # pylint: disable=arguments-differ
     def __init__(self,
@@ -42,14 +43,11 @@ class RoughSpectroscopy(cal_base_experiment.BaseCalibrationExperiment):
                  amplitude: float = 0.05,
                  sigma: float = 360,
                  duration: int = 1440,
-                 analysis: Optional[cal_base_fitter.BaseCalibrationAnalysis] = None,
+                 analysis: Optional[Calibration1DAnalysis] = None,
                  job: Optional = None):
         entry = types.SingleQubitAtomicPulses.STIM.value
 
-        if not table.has(
-            instruction=entry,
-            qubits=[qubit]
-        ):
+        if not table.has(instruction=entry, qubits=[qubit]):
             raise CalExpError('Entry {name} does not exist. '
                               'Check your calibration table.'.format(name=entry))
 
@@ -94,7 +92,8 @@ class RoughSpectroscopy(cal_base_experiment.BaseCalibrationExperiment):
                          workflow=data_processing)
 
 
-class RoughAmplitudeCalibration(cal_base_experiment.BaseCalibrationExperiment):
+class RoughAmplitudeCalibration(BaseCalibrationExperiment):
+    """Performs a rough amplitude calibration by scanning the amplitude of the pulse."""
 
     # pylint: disable=arguments-differ
     def __init__(self,
@@ -102,17 +101,26 @@ class RoughAmplitudeCalibration(cal_base_experiment.BaseCalibrationExperiment):
                  qubit: int,
                  data_processing: workflow.AnalysisWorkFlow,
                  amp_vals: np.ndarray,
-                 sigma: float = 40,
-                 duration: int = 160,
-                 analysis: Optional[cal_base_fitter.BaseCalibrationAnalysis] = None,
+                 pulse_params: dict,
+                 analysis: Optional[Calibration1DAnalysis] = None,
                  job: Optional = None,
                  pulse_envelope: Optional[Callable] = Gaussian):
+        """
+        Args:
+            table:
+            qubit: Qubit on which to run the calibration.
+            data_processing: Steps used to process the data from the Result.
+            amp_vals: Amplitude values to scan in the calibration.
+            pulse_params: Parameters of the pulse. These need to match the
+                definition of the pulse_envelope being used.
+            analysis: Analysis class used.
+            job: Optional job id to retrive past expereiments.
+            pulse_envelope: Name of the pulse function used to generate the
+                pulse schedule.
+        """
         entry = types.SingleQubitAtomicPulses.STIM.value
 
-        if not table.has(
-            instruction=entry,
-            qubits=[qubit]
-        ):
+        if not table.has(instruction=entry, qubits=[qubit]):
             raise CalExpError('Entry {name} does not exist. '
                               'Check your calibration table.'.format(name=entry))
 
@@ -123,10 +131,8 @@ class RoughAmplitudeCalibration(cal_base_experiment.BaseCalibrationExperiment):
             param_name='amp'
         )
 
-        # setup Rabi calibration pulse
-        new_params = {'sigma': sigma, 'duration': duration}
-
-        for key, val in new_params.items():
+        # Store the parameters in the table.
+        for key, val in pulse_params.items():
             table.set_parameter(
                 instruction=entry,
                 qubits=[qubit],
@@ -134,13 +140,12 @@ class RoughAmplitudeCalibration(cal_base_experiment.BaseCalibrationExperiment):
                 param_value=val
             )
 
-        generator = SinglePulseGenerator(qubit, new_params, amp_vals, 'amp', 'Rabi', pulse_envelope)
+        generator = SinglePulseGenerator(qubit, pulse_params, amp_vals, amp, 'Rabi', pulse_envelope)
 
         # setup analysis
         if analysis is None:
-            analysis = fitters.CosinusoidalFit(
-                name='rough_amplitude'
-            )
+            analysis = fitters.CosinusoidalFit(name=generator.name)
+
         analysis.parameter = amp
 
         super().__init__(generator=generator,
@@ -160,7 +165,7 @@ class SinglePulseGenerator(Generator):
                  qubit: int,
                  parameters: Dict,
                  values_to_scan: Union[List, np.array],
-                 scanned_parameter: str,
+                 scanned_parameter: Parameter,
                  name: str,
                  pulse: Callable = None):
         """
@@ -182,18 +187,16 @@ class SinglePulseGenerator(Generator):
         self.scanned_parameter = scanned_parameter
         self.qubit = qubit
 
-        # Add the parameter to be scanned if not supplied.
-        if scanned_parameter not in self.parameters:
-            self.parameters[scanned_parameter] = Parameter('α')
-        elif not isinstance(self.parameters[scanned_parameter], ParameterExpression):
-            self.parameters[scanned_parameter] = Parameter('α')
+        # The name of the pulse parameter is the last entry
+        name = self.scanned_parameter.name.split('.')[-1]
+        self.parameters[name] = scanned_parameter
 
         # Define the QuantumCircuit that this generator will use.
         self.template_qcs = []
         qc = QuantumCircuit(1, 1)
-        gate = Gate(scanned_parameter, 1, [self.parameters[scanned_parameter]])
+        gate = Gate(scanned_parameter.name, 1, [scanned_parameter])
         qc.append(gate, [0])
-        qc.add_calibration(gate, [self.qubit], self._schedule(), self.parameters[scanned_parameter])
+        qc.add_calibration(gate, [self.qubit], self._schedule(), scanned_parameter)
         qc.measure(0, 0)
         self.template_qcs.append(qc)
 
@@ -204,14 +207,14 @@ class SinglePulseGenerator(Generator):
         meta data to the circuits.
         """
         qc = self.template_qcs[0]
-        return [qc.assign_parameters({self.parameters[self.scanned_parameter]: val})
+        return [qc.assign_parameters({self.scanned_parameter: val})
                 for val in self.scanned_values]
 
     def _schedule(self) -> Schedule:
         """
         Creates the schedules that will be added to the circuit.
         """
-        sched = Schedule(name=self.scanned_parameter)
+        sched = Schedule(name=self.scanned_parameter.name)
         ch = DriveChannel(self.qubit)
 
         # TODO Some backends apparently don't support SetPhase
@@ -237,10 +240,10 @@ class SinglePulseGenerator(Generator):
         """
         metadata = []
         for val in self.scanned_values:
-            meta = {}
-            ch = DriveChannel(self.qubit)
-            meta[self.scanned_parameter + '.' + ch.name]: val
-
-            metadata.append(meta)
+            x_values = {
+                self.scanned_parameter.name: val
+            }
+            meta = CalibrationMetadata(name=self.name, x_values=x_values)
+            metadata.append(meta.to_dict())
 
         return metadata

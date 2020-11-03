@@ -19,16 +19,17 @@ from qiskit import transpile, schedule, assemble, pulse
 from qiskit.providers import BaseBackend, BaseJob
 
 from qiskit.ignis.experiments.base import Experiment
-from qiskit.ignis.experiments.calibration import cal_base_generator, cal_base_fitter
+from qiskit.ignis.experiments.calibration import Calibration1DAnalysis
 from qiskit.ignis.experiments.calibration.exceptions import CalExpError
 from qiskit.ignis.experiments.calibration.workflow import AnalysisWorkFlow
+from qiskit.ignis.experiments.base import Generator, Analysis
 
 
 class BaseCalibrationExperiment(Experiment):
     """An experiment class for a calibration experiment."""
     def __init__(self,
-                 generator: Optional[cal_base_generator.BaseCalibrationGenerator] = None,
-                 analysis: Optional[cal_base_fitter.BaseCalibrationAnalysis] = None,
+                 generator: Optional[Generator] = None,
+                 analysis: Optional[Analysis] = None,
                  job: Optional[BaseJob] = None,
                  workflow: Optional[AnalysisWorkFlow] = None):
         """Initialize an experiment."""
@@ -45,12 +46,12 @@ class BaseCalibrationExperiment(Experiment):
         # TODO: Add transpiler & scheduler options
 
         # check backend consistency
-        if backend.name() != self.generator.associated_backend:
-            raise CalExpError('Executing on the wrong backend. '
-                              'Pulse are generated based on the calibration table of {back1}, '
-                              'but experiments are running on {back2}.'
-                              ''.format(back1=self.generator.table.backend_name,
-                                        back2=backend.name()))
+        #if backend.name() != self.generator.associated_backend:
+        #    raise CalExpError('Executing on the wrong backend. '
+        #                      'Pulse are generated based on the calibration table of {back1}, '
+        #                      'but experiments are running on {back2}.'
+        #                      ''.format(back1=self.generator.table.backend_name,
+        #                                back2=backend.name()))
 
         # Get schedule
         circuits = transpile(self.generator.circuits(),
