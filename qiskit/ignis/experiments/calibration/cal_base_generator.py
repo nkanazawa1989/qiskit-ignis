@@ -77,7 +77,7 @@ class Base1QCalibrationGenerator(Generator):
                 }
                 meta = cal_metadata.CalibrationMetadata(
                     name=self.name,
-                    series=None if template_qc.name == 'null' else template_qc.name,
+                    series=template_qc.name,
                     pulse_schedule_name=self.__class__.__name__,
                     x_values=x_values
                 )

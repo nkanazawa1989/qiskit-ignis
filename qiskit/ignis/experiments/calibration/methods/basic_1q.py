@@ -30,7 +30,7 @@ class RoughSpectroscopy(BaseCalibrationExperiment):
     """Performs a frequency spectroscopy by scanning the drive channel frequency."""
 
     def __init__(self,
-                 table: cal_table.ParameterTable,
+                 table: cal_table.PulseTable,
                  qubit: int,
                  data_processing: workflow.AnalysisWorkFlow,
                  freq_vals: np.ndarray,
@@ -87,7 +87,7 @@ class RoughAmplitudeCalibration(BaseCalibrationExperiment):
     """Performs a rough amplitude calibration by scanning the amplitude of the pulse."""
 
     def __init__(self,
-                 table: cal_table.ParameterTable,
+                 table: cal_table.PulseTable,
                  qubit: int,
                  data_processing: workflow.AnalysisWorkFlow,
                  amp_vals: np.ndarray,
