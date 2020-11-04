@@ -17,7 +17,8 @@ from typing import Optional, List, Callable, Union, Dict, Iterable
 
 import numpy as np
 
-from qiskit import circuit, pulse
+from qiskit import pulse
+from qiskit.circuit import QuantumCircuit, Gate, Parameter
 from qiskit.ignis.experiments.calibration.cal_base_generator import Base1QCalibrationGenerator
 
 
@@ -30,9 +31,9 @@ class SinglePulseGenerator(Base1QCalibrationGenerator):
     def __init__(self,
                  name: str,
                  qubit: int,
-                 parameters: Dict[str, Union[int, float, complex, circuit.Parameter]],
+                 parameters: Dict[str, Union[int, float, complex, Parameter]],
                  values_to_scan: Iterable[float],
-                 ref_frequency: Optional[Union[float, circuit.Parameter]] = None,
+                 ref_frequency: Optional[Union[float, Parameter]] = None,
                  pulse_envelope: Optional[Callable] = None):
         """
         Args:
@@ -57,14 +58,14 @@ class SinglePulseGenerator(Base1QCalibrationGenerator):
                          values_to_scan=values_to_scan,
                          ref_frequency=ref_frequency)
 
-    def _template_qcs(self) -> List[circuit.QuantumCircuit]:
+    def _template_qcs(self) -> List[QuantumCircuit]:
         """Create the template quantum circuit.
         """
         cal_sched = self.single_pulse_schedule()
         parameter = list(cal_sched.parameters)[0]
 
-        template_qc = circuit.QuantumCircuit(1, 1, name='single_pulse')
-        gate = circuit.Gate(parameter.name, 1, [parameter])
+        template_qc = QuantumCircuit(1, 1, name='single_pulse')
+        gate = Gate(parameter.name, 1, [parameter])
         template_qc.append(gate, [0])
         template_qc.add_calibration(gate, self.qubits, cal_sched, parameter)
         template_qc.measure(0, 0)
@@ -91,7 +92,7 @@ class SinglePulseGenerator(Base1QCalibrationGenerator):
         return sched
 
 
-class RamseyXYGenerator(cal_base_generator.Base1QCalibrationGenerator):
+class RamseyXYGenerator(Base1QCalibrationGenerator):
     """
     todo docstring
     """
@@ -118,7 +119,7 @@ class RamseyXYGenerator(cal_base_generator.Base1QCalibrationGenerator):
                 parameters should contain `duration`, `amp`, `sigma` and `beta`.
         """
         self._pulse_envelope = pulse_envelope
-        self._delay = circuit.Parameter('q{ind}.d{ind}.delay'.format(ind=qubit))
+        self._delay = Parameter('q{ind}.d{ind}.delay'.format(ind=qubit))
 
         super().__init__(name=name,
                          qubit=qubit,
@@ -126,15 +127,15 @@ class RamseyXYGenerator(cal_base_generator.Base1QCalibrationGenerator):
                          values_to_scan=delays,
                          ref_frequency=ref_frequency)
 
-    def _template_qcs(self) -> List[circuit.QuantumCircuit]:
+    def _template_qcs(self) -> List[QuantumCircuit]:
         """Create the template quantum circuit.
         """
         cal_series = {'x': self.ramsey_x_schedule(), 'y': self.ramsey_y_schedule()}
 
         template_qcs = []
         for key, sched in cal_series.items():
-            template_qc = circuit.QuantumCircuit(1, 1, name=key)
-            gate = circuit.Gate(self._delay.name, 1, [self._delay])
+            template_qc = QuantumCircuit(1, 1, name=key)
+            gate = Gate(self._delay.name, 1, [self._delay])
             template_qc.append(gate, [0])
             template_qc.add_calibration(gate, self.qubits, sched, self._delay)
             template_qc.measure(0, 0)

@@ -14,7 +14,7 @@
 
 from typing import Union, Dict, List, Iterable, Optional
 
-from qiskit import circuit
+from qiskit.circuit import QuantumCircuit, Parameter
 
 from qiskit.ignis.experiments.base import Generator
 from qiskit.ignis.experiments.calibration import cal_metadata
@@ -29,7 +29,7 @@ class Base1QCalibrationGenerator(Generator):
     def __init__(self,
                  name: str,
                  qubit: int,
-                 parameters: Dict[str, Union[int, float, complex, circuit.Parameter]],
+                 parameters: Dict[str, Union[int, float, complex, Parameter]],
                  values_to_scan: Iterable[float],
                  ref_frequency: Optional[float] = None):
         """
@@ -48,12 +48,12 @@ class Base1QCalibrationGenerator(Generator):
         self._scanned_values = values_to_scan
         self._ref_frequency = ref_frequency
 
-    def _template_qcs(self) -> List[circuit.QuantumCircuit]:
+    def _template_qcs(self) -> List[QuantumCircuit]:
         """Create the template quantum circuit(s).
         """
         raise NotImplementedError
 
-    def circuits(self) -> List[circuit.QuantumCircuit]:
+    def circuits(self) -> List[QuantumCircuit]:
         """
         Return a list of circuits that are run in the calibration eperiment.
         Each circuit corresponds to one of the specified parameter values.
