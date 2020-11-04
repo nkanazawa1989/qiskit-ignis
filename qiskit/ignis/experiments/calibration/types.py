@@ -57,7 +57,7 @@ FitResult.stdev.__doc__ = 'Standard deviation of fit parameters.'
 FitResult.chisq.__doc__ = 'Reduced Chi squared value of fit result.'
 
 
-class SingleQubitAtomicPulses(Enum):
+class SingleQubitPulses(Enum):
     """Name of single qubit gates."""
     X90P = 'x90p'
     X90M = 'x90m'

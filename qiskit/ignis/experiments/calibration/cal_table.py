@@ -21,11 +21,28 @@ from qiskit import pulse, circuit
 from qiskit.ignis.experiments.calibration import types
 
 
-class ParameterTable:
+class PulseTable:
     """A database to store parameters of pulses.
 
     Each entry of this database represents a single parameter associated with the specific pulse,
-    and the pulse template is stored in another database.
+    and the pulse template is stored in another relational database.
+
+    For example, database entries may look like:
+
+    ```
+    ========================================================================
+     qubits | channel | gate_type | name | value | validation | timestamp
+    --------+---------+-----------+------+-------+------------+-------------
+     (0,)   | d0      | x90p      | amp  | 0.01  | pass       | 2020.01.01
+    --------+---------+-----------+------+-------+------------+-------------
+     (0,)   | d0      | x90p      | amp  | 0.03  | fail       | 2020.01.02
+    --------+---------+-----------+------+-------+------------+-------------
+     (0,1)  | u0      | cr90p     | amp  | 0.04  | pass       | 2020.01.01
+    ------------------------------------------------------------------------
+    ```
+
+    You can search for the specific entry by filtering or you can directly generate
+    keyword argument for the target pulse factory.
     """
 
     def __init__(self, params_collection: pd.DataFrame):
@@ -66,7 +83,7 @@ class ParameterTable:
             parameters: Optional[Union[str, List[str]]] = None,
             use_complex_amplitude: bool = True,
             remove_bad_data: bool = True
-    ) -> Dict[str, Union[int, float, complex]]:
+    ) -> Dict[str, Union[int, float, complex, circuit.Parameter]]:
         """Get kwargs of calibration parameters to feed into experiment generator.
 
         Qubit index, channel and gate type should be specified. Wildcards cannot be used.
@@ -103,7 +120,7 @@ class ParameterTable:
             channel=channel,
             gate_type=gate_type
         )
-        params_dict = ParameterTable._flatten(matched_data)
+        params_dict = PulseTable._flatten(matched_data)
 
         # format dictionary
         format_dict = {}
@@ -171,7 +188,7 @@ class ParameterTable:
             name=name,
             validation=validation
         )
-        params_dict = ParameterTable._flatten(matched_data)
+        params_dict = PulseTable._flatten(matched_data)
 
         # pick calibrated value with latest time stamp
         if only_latest:
@@ -298,6 +315,6 @@ class ScheduleTemplate:
     def get_schedule(self,
                      qubits: Union[int, Iterable[int]],
                      name: str,
-                     param_table: ParameterTable):
+                     param_table: PulseTable):
         """"""
         pass

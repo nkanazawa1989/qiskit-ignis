@@ -18,7 +18,7 @@ import pandas as pd
 from qiskit.ignis.experiments.calibration import cal_table
 
 
-class FakeSingleQubitTable(cal_table.ParameterTable):
+class FakeSingleQubitTable(cal_table.PulseTable):
     """Fake parameter table. For debugging and unittest purposes."""
     GATE_TYPES = ['x90p', 'xp']
 

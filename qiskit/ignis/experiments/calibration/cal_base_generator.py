@@ -12,112 +12,79 @@
 
 """Qiskit Ignis calibration generator."""
 
-from copy import deepcopy
-from typing import Union, Dict, List, Callable, Iterable
+from typing import Union, Dict, List, Iterable, Optional
 
-from qiskit import QuantumCircuit
-from qiskit.circuit import Parameter
+from qiskit.circuit import QuantumCircuit, Parameter
 
 from qiskit.ignis.experiments.base import Generator
-from qiskit.ignis.experiments.calibration.cal_table import CalibrationDataTable
-from qiskit.ignis.experiments.calibration.exceptions import CalExpError
+from qiskit.ignis.experiments.calibration import cal_metadata
 
 
-class BaseCalibrationGenerator(Generator):
-    """A generator class for calibration circuit generation.
-
-    # TODO support simultaneous calibration
+class Base1QCalibrationGenerator(Generator):
     """
+    A base generator for single-qubit calibration. All circuits
+    generated from this generator will apply to a single qubit. 
+    """
+
     def __init__(self,
-                 cal_name: str,
-                 target_qubits: Union[int, List[int]],
-                 cal_generator: Callable,
-                 table: CalibrationDataTable,
-                 **kwargs):
-        """Create new high level generator for calibration.
-
+                 name: str,
+                 qubit: int,
+                 parameters: Dict[str, Union[int, float, complex, Parameter]],
+                 values_to_scan: Iterable[float],
+                 ref_frequency: Optional[float] = None):
+        """
         Args:
-            cal_name: Name of this calibration.
-            target_qubits: Target qubit of this calibration.
-            cal_generator: Generator of calibration circuit.
-            table: Table of calibration data.
+            qubit: The qubit to which we will add the calibration.
+            parameters: The arguments for the pulse schedule.
+            values_to_scan: A list of parameter values for which to generate circuits.
+            ref_frequency: A reference frequency of drive channel to run calibration.
+                Usually this is identical to the qubit frequency, or f_01.
+                The drive channel is initialized with this frequency and
+                shift frequency instruction of consecutive pulses, or pulse sideband,
+                are modulated with respect to this frequency.
         """
-        try:
-            self.target_qubits = list(target_qubits)
-        except TypeError:
-            self.target_qubits = [target_qubits]
+        super().__init__(name=name, qubits=[qubit])
+        self._parameters = parameters
+        self._scanned_values = values_to_scan
+        self._ref_frequency = ref_frequency
 
-        # calibration generator is not agnostic to backend because
-        # pulse schedule is specific to each physical qubit.
-        # this value is used to validation of backend consistency when submitting job.
-        self.associated_backend = table.backend_name
-
-        super().__init__(name=cal_name, qubits=target_qubits)
-
-        self._defined_parameters = set()
-        self._circuits = []
-        self._metadata = []
-
-        cal_prog = cal_generator(
-            name=self.name,
-            table=table,
-            target_qubits=target_qubits,
-            **kwargs
-        )
-
-        # store parameters in generated circuits
-        for temp_circ in cal_prog.circuits:
-            self._defined_parameters.update(temp_circ.parameters)
-
-        # validation
-        if len(cal_prog.circuits) != len(cal_prog.metadata):
-            raise CalExpError(
-                'Number of circuits and metadata are not identical.'
-                '{}!={}'.format(len(cal_prog.circuits), len(cal_prog.metadata)))
-
-        self._unassigned_circuits = cal_prog.circuits
-        self._unassigned_metadata = cal_prog.metadata
-
-    def assign_parameters(self,
-                          parameters: Dict[Union[str, Parameter], Iterable[Union[int, float]]]):
-        """Assign values to scan for parameters.
-
-        If length of bind values are different, scan is limited to the parameter
-        with the shortest length.
+    def _template_qcs(self) -> List[QuantumCircuit]:
+        """Create the template quantum circuit(s).
         """
-        self._circuits.clear()
-        self._metadata.clear()
-
-        # convert keys to string. parameter names in calibration should be unique.
-        str_parameters = {}
-        for param, values in parameters.items():
-            if isinstance(param, str):
-                str_parameters[param] = values
-            else:
-                str_parameters[param.name] = values
-
-        for circ, meta in zip(self._unassigned_circuits, self._unassigned_metadata):
-            active_params = [param for param in circ.parameters if param.name in str_parameters]
-
-            # nothing to bind
-            if not active_params:
-                self._circuits.append(circ)
-                self._metadata.append(meta)
-                continue
-
-            # generate parameter bind
-            active_scans = [str_parameters[param.name] for param in active_params]
-            for scan_vals in zip(*active_scans):
-                bind_dict = dict(zip(active_params, scan_vals))
-                temp_meta = deepcopy(meta)
-                temp_meta.update({param.name: val for param, val in bind_dict.items()})
-                self._circuits.append(circ.assign_parameters(bind_dict, inplace=False))
-                self._metadata.append(temp_meta)
+        raise NotImplementedError
 
     def circuits(self) -> List[QuantumCircuit]:
-        """Return a list of experiment circuits."""
-        return self._circuits
+        """
+        Return a list of circuits that are run in the calibration eperiment.
+        Each circuit corresponds to one of the specified parameter values.
+        This function is also responsible for adding the
+        meta data to the circuits.
+        """
+        cal_circs = []
+        for template_qc in self._template_qcs():
+            parameter = list(template_qc.parameters)[0]
+            for val in self._scanned_values:
+                cal_circs.append(template_qc.assign_parameters({parameter: val}))
 
-    def _extra_metadata(self) -> List[Dict[str, any]]:
-        """Generate a list of experiment metadata dicts."""
-        return self._metadata
+        return cal_circs
+
+    def _extra_metadata(self):
+        """
+        Creates the metadata for the experiment.
+        """
+        metadata = []
+        for template_qc in self._template_qcs():
+            parameter = list(template_qc.parameters)[0]
+            for val in self._scanned_values:
+                x_values = {
+                    parameter.name: val
+                }
+                meta = cal_metadata.CalibrationMetadata(
+                    name=self.name,
+                    series=template_qc.name,
+                    pulse_schedule_name=self.__class__.__name__,
+                    x_values=x_values
+                )
+                metadata.append(meta.to_dict())
+
+        return metadata
