@@ -21,7 +21,7 @@ from qiskit import circuit, pulse
 from qiskit.ignis.experiments.calibration.cal_base_generator import Base1QCalibrationGenerator
 
 
-class SinglePulseGenerator(cal_base_generator.Base1QCalibrationGenerator):
+class SinglePulseGenerator(Base1QCalibrationGenerator):
     """
     A generator that generates single pulses and scans a single parameter
     of that pulse. Note that the same pulse may be applied to multiple qubits
