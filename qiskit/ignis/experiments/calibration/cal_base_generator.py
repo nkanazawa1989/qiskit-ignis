@@ -21,7 +21,10 @@ from qiskit.ignis.experiments.calibration import cal_metadata
 
 
 class Base1QCalibrationGenerator(Generator):
-    """A base generator class for calibration."""
+    """
+    A base generator for single-qubit calibration. All circuits
+    generated from this generator will apply to a single qubit. 
+    """
 
     def __init__(self,
                  name: str,
