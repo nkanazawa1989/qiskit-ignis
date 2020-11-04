@@ -47,10 +47,10 @@ class SinglePulseGenerator(Base1QCalibrationGenerator):
                 shift frequency instruction of consecutive pulses, or pulse sideband,
                 are modulated with respect to this frequency.
             pulse_envelope: A parametric pulse function used to generate the schedule
-                that is added to the circuits. This defaults to Gaussian and
-                parameters should contain `duration`, `amp`, and `sigma`.
+                that is added to the circuits. This defaults to Drag and
+                parameters should contain `duration`, `amp`, `sigma` and `beta`.
         """
-        self._pulse_envelope = pulse_envelope
+        self._pulse_envelope = pulse_envelope or pulse.Drag
 
         super().__init__(name=name,
                          qubit=qubit,
@@ -82,12 +82,7 @@ class SinglePulseGenerator(Base1QCalibrationGenerator):
             if self._ref_frequency is not None:
                 pulse.set_frequency(self._ref_frequency, d_channel)
             # add single stimulus pulse
-            if not self._pulse_envelope:
-                # remove DRAG coefficient if exists
-                self._parameters.pop('beta', None)
-                pulse.play(pulse.Gaussian(**self._parameters), d_channel)
-            else:
-                pulse.play(self._pulse_envelope(**self._parameters), d_channel)
+            pulse.play(self._pulse_envelope(**self._parameters), d_channel)
 
         return sched
 
@@ -118,7 +113,7 @@ class RamseyXYGenerator(Base1QCalibrationGenerator):
                 that is added to the circuits. This defaults to Drag and
                 parameters should contain `duration`, `amp`, `sigma` and `beta`.
         """
-        self._pulse_envelope = pulse_envelope
+        self._pulse_envelope = pulse_envelope or pulse.Drag
         self._delay = Parameter('q{ind}.d{ind}.delay'.format(ind=qubit))
 
         super().__init__(name=name,
@@ -154,20 +149,15 @@ class RamseyXYGenerator(Base1QCalibrationGenerator):
                 pulse.set_frequency(self._ref_frequency, d_channel)
 
             # add x90 pulse
-            if not self._pulse_envelope:
-                pulse.play(pulse.Drag(**self._parameters), d_channel)
-            else:
-                pulse.play(self._pulse_envelope(**self._parameters), d_channel)
+            pulse.play(self._pulse_envelope(**self._parameters), d_channel)
 
             # todo perhaps this doesn't work because delay doesn't accept float.
             # circuit parameter cannot be automatically cast into integer.
+            # also parametric duration is not yet supported
             pulse.delay_qubits(self._delay, self.qubits[0])
 
             # add x90 pulse
-            if not self._pulse_envelope:
-                pulse.play(pulse.Drag(**self._parameters), d_channel)
-            else:
-                pulse.play(self._pulse_envelope(**self._parameters), d_channel)
+            pulse.play(self._pulse_envelope(**self._parameters), d_channel)
 
         return sched
 
@@ -182,20 +172,15 @@ class RamseyXYGenerator(Base1QCalibrationGenerator):
                 pulse.set_frequency(self._ref_frequency, d_channel)
 
             # add x90 pulse
-            if not self._pulse_envelope:
-                pulse.play(pulse.Drag(**self._parameters), d_channel)
-            else:
-                pulse.play(self._pulse_envelope(**self._parameters), d_channel)
+            pulse.play(self._pulse_envelope(**self._parameters), d_channel)
 
             # todo perhaps this doesn't work because delay doesn't accept float.
             # circuit parameter cannot be automatically cast into integer.
+            # also parametric duration is not yet supported
             pulse.delay_qubits(self._delay, self.qubits[0])
 
             # add y90 pulse
             pulse.shift_phase(np.pi/2, d_channel)
-            if not self._pulse_envelope:
-                pulse.play(pulse.Drag(**self._parameters), d_channel)
-            else:
-                pulse.play(self._pulse_envelope(**self._parameters), d_channel)
+            pulse.play(self._pulse_envelope(**self._parameters), d_channel)
 
         return sched
