@@ -18,7 +18,7 @@ from typing import Optional, List, Callable, Union, Dict, Iterable
 import numpy as np
 
 from qiskit import circuit, pulse
-from qiskit.ignis.experiments.calibration import cal_base_generator
+from qiskit.ignis.experiments.calibration.cal_base_generator import Base1QCalibrationGenerator
 
 
 class SinglePulseGenerator(cal_base_generator.Base1QCalibrationGenerator):
