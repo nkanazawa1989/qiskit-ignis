@@ -36,7 +36,7 @@ class Base1QCalibrationGenerator(Generator):
         Args:
             qubit: The qubit to which we will add the calibration.
             parameters: The arguments for the pulse schedule.
-            values_to_scan: A list of amplitudes for which to generate a circuit.
+            values_to_scan: A list of parameter values for which to generate circuits.
             ref_frequency: A reference frequency of drive channel to run calibration.
                 Usually this is identical to the qubit frequency, or f_01.
                 The drive channel is initialized with this frequency and
