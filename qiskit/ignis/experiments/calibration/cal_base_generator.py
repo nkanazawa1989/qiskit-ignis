@@ -49,7 +49,7 @@ class Base1QCalibrationGenerator(Generator):
         self._ref_frequency = ref_frequency
 
     def _template_qcs(self) -> List[circuit.QuantumCircuit]:
-        """Create the template quantum circuit.
+        """Create the template quantum circuit(s).
         """
         raise NotImplementedError
 
