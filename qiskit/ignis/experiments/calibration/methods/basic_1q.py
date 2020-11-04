@@ -66,7 +66,7 @@ class RoughSpectroscopy(BaseCalibrationExperiment):
         freq01 = circuit.Parameter('q{ind}.d{ind}.f01'.format(ind=qubit))
 
         generator = generators.SinglePulseGenerator(
-            name='rough_spectroscopy',
+            name='spectroscopy',
             qubit=qubit,
             parameters=param_dict,
             values_to_scan=freq_vals,
