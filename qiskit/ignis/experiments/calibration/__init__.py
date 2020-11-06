@@ -12,4 +12,6 @@
 
 """Qiskit Ignis calibration module."""
 
-from .cal_base_analysis import Calibration1DAnalysis
+from qiskit.ignis.experiments.calibration.analysis.cal_1d_analysis import Calibration1DAnalysis
+from qiskit.ignis.experiments.calibration.cal_table import PulseTable
+from qiskit.ignis.experiments.calibration.mock import FakeSingleQubitTable

@@ -16,7 +16,6 @@ from collections import defaultdict
 from typing import Union, Dict, Optional, Any, Iterator, List, Tuple
 
 import numpy as np
-from qiskit.circuit import Parameter
 from qiskit.result import Result, Counts
 from scipy import optimize
 
@@ -33,7 +32,8 @@ class Calibration1DAnalysis(Analysis):
                  name: Optional[str] = None,
                  data: Optional[Any] = None,
                  metadata: Optional[Dict[str, Any]] = None,
-                 exp_id: Optional[str] = None):
+                 exp_id: Optional[str] = None,
+                 workflow: Optional[AnalysisWorkFlow] = None):
         """Initialize calibration experiment analysis
 
         Args:
@@ -41,16 +41,17 @@ class Calibration1DAnalysis(Analysis):
             data: Result data to initialize with.
             metadata: Metadata to initialize with.
             exp_id: Experiment id string.
+            workflow: the steps to process the data with.
 
         Additional Information:
             Pulse job doesn't return marginalized result.
             Result memory slot is marginalized with qubits specified in metadata.
 
-            User don't need to take care of data format.
+            Users do not need to take care of data format.
             Data is automatically processed based on the give workflow.
         """
         # Workflow for measurement data processing
-        self._workflow = None
+        self._workflow = workflow
         self._parameter = None
         self._series = {}
         self._x_values = None

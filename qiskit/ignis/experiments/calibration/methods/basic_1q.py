@@ -19,18 +19,19 @@ from qiskit import circuit
 
 from qiskit.ignis.experiments.calibration import (types,
                                                   generators,
-                                                  analysis,
                                                   workflow,
-                                                  cal_table,
                                                   Calibration1DAnalysis)
 from qiskit.ignis.experiments.calibration.cal_base_experiment import BaseCalibrationExperiment
+from qiskit.ignis.experiments.calibration.cal_table import PulseTable
+from qiskit.ignis.experiments.calibration.analysis.peak import GaussianFit
+from qiskit.ignis.experiments.calibration.analysis.trigonometric import CosinusoidalFit
 
 
 class RoughSpectroscopy(BaseCalibrationExperiment):
     """Performs a frequency spectroscopy by scanning the drive channel frequency."""
 
     def __init__(self,
-                 table: cal_table.PulseTable,
+                 table: PulseTable,
                  qubit: int,
                  data_processing: workflow.AnalysisWorkFlow,
                  freq_vals: np.ndarray,
@@ -38,10 +39,10 @@ class RoughSpectroscopy(BaseCalibrationExperiment):
                  job: Optional = None,
                  pulse_envelope: Optional[Callable] = None,
                  pulse_name: Optional[str] = types.SingleQubitPulses.XP.value):
-        """Create new rabi amplitude experiment.
+        """Create new spectroscopy experiment.
 
         Args:
-            table:
+            table: The table of pulse parameters.
             qubit: Qubit on which to run the calibration.
             data_processing: Steps used to process the data from the Result.
             freq_vals: Frequency values to scan in the calibration.
@@ -75,19 +76,18 @@ class RoughSpectroscopy(BaseCalibrationExperiment):
 
         # setup analysis
         if analysis_class is None:
-            analysis_class = analysis.GaussianFit(name=generator.name)
+            analysis_class = GaussianFit(name=generator.name, workflow=data_processing)
 
         super().__init__(generator=generator,
                          analysis=analysis_class,
-                         job=job,
-                         workflow=data_processing)
+                         job=job)
 
 
 class RoughAmplitudeCalibration(BaseCalibrationExperiment):
     """Performs a rough amplitude calibration by scanning the amplitude of the pulse."""
 
     def __init__(self,
-                 table: cal_table.PulseTable,
+                 table: PulseTable,
                  qubit: int,
                  data_processing: workflow.AnalysisWorkFlow,
                  amp_vals: np.ndarray,
@@ -98,12 +98,12 @@ class RoughAmplitudeCalibration(BaseCalibrationExperiment):
         """Create new rabi amplitude experiment.
 
         Args:
-            table:
+            table: The table of pulse parameters.
             qubit: Qubit on which to run the calibration.
             data_processing: Steps used to process the data from the Result.
             amp_vals: Amplitude values to scan in the calibration.
             analysis_class: Analysis class used.
-            job: Optional job id to retrive past expereiments.
+            job: Optional job id to retrieve past experiments.
             pulse_envelope: Name of the pulse function used to generate the
                 pulse schedule. If not specified, the default pulse shape of
                 :py:class:`SinglePulseGenerator` is used.
@@ -133,9 +133,8 @@ class RoughAmplitudeCalibration(BaseCalibrationExperiment):
 
         # setup analysis
         if analysis_class is None:
-            analysis_class = analysis.CosinusoidalFit(name=generator.name)
+            analysis_class = CosinusoidalFit(name=generator.name, workflow=data_processing)
 
         super().__init__(generator=generator,
                          analysis=analysis_class,
-                         job=job,
-                         workflow=data_processing)
+                         job=job)

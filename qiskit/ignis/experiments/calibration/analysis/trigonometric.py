@@ -13,9 +13,9 @@
 import numpy as np
 
 from scipy import signal
-from typing import Iterator, Tuple, List, Dict
+from typing import Iterator, Tuple, List
 
-from qiskit.ignis.experiments.calibration import Calibration1DAnalysis
+from qiskit.ignis.experiments.calibration.analysis.cal_1d_analysis import Calibration1DAnalysis
 
 
 def _freq_guess(xvals: np.ndarray, yvals: np.ndarray):
