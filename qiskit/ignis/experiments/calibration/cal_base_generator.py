@@ -48,9 +48,13 @@ class Base1QCalibrationGenerator(Generator):
         self._scanned_values = values_to_scan
         self._ref_frequency = ref_frequency
 
-    def _template_qcs(self) -> List[QuantumCircuit]:
-        """Create the template quantum circuit(s).
-        """
+    @property
+    def parameters(self):
+        """Returns the list of parameters that the generator uses."""
+        return self._parameters
+
+    def template_qcs(self) -> List[QuantumCircuit]:
+        """Create the template quantum circuit(s)."""
         raise NotImplementedError
 
     def circuits(self) -> List[QuantumCircuit]:
@@ -61,7 +65,7 @@ class Base1QCalibrationGenerator(Generator):
         meta data to the circuits.
         """
         cal_circs = []
-        for template_qc in self._template_qcs():
+        for template_qc in self.template_qcs():
             parameter = list(template_qc.parameters)[0]
             for val in self._scanned_values:
                 cal_circs.append(template_qc.assign_parameters({parameter: val}))
@@ -73,7 +77,7 @@ class Base1QCalibrationGenerator(Generator):
         Creates the metadata for the experiment.
         """
         metadata = []
-        for template_qc in self._template_qcs():
+        for template_qc in self.template_qcs():
             parameter = list(template_qc.parameters)[0]
             for val in self._scanned_values:
                 x_values = {

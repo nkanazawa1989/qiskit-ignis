@@ -13,32 +13,18 @@
 """Qiskit Ignis calibration module."""
 
 import uuid
-from typing import List, Optional
+from typing import List
 
 from qiskit import transpile, schedule, assemble, pulse
 from qiskit.providers import BaseBackend, BaseJob
 
 from qiskit.ignis.experiments.base import Experiment
-from qiskit.ignis.experiments.calibration import Calibration1DAnalysis
-from qiskit.ignis.experiments.calibration.exceptions import CalExpError
-from qiskit.ignis.experiments.calibration.workflow import AnalysisWorkFlow
-from qiskit.ignis.experiments.base import Generator, Analysis
 
 
 class BaseCalibrationExperiment(Experiment):
-    """An experiment class for a calibration experiment."""
-    def __init__(self,
-                 generator: Optional[Generator] = None,
-                 analysis: Optional[Analysis] = None,
-                 job: Optional[BaseJob] = None,
-                 workflow: Optional[AnalysisWorkFlow] = None):
-        """Initialize an experiment."""
-        # data processing chain
-        self._workflow = workflow
-
-        super().__init__(generator=generator,
-                         analysis=analysis,
-                         job=job)
+    """
+    Class for a calibration experiments.
+    """
 
     def schedules(self, backend: BaseBackend) -> List[pulse.Schedule]:
         """Return pulse schedules to submit."""
@@ -81,25 +67,19 @@ class BaseCalibrationExperiment(Experiment):
             meta['exp_id'] = exp_id
             meta['qubits'] = self.generator.qubits
 
-        # store shots information for post processing
-        self._workflow.shots = kwargs.get('shots', 1024)
+        # The analysis data processing requires certain predefined data types.
+        self.analysis.workflow.shots = kwargs.get('shots', 1024)
+        shots = self.analysis.workflow.shots
+        meas_level = self.analysis.workflow.meas_level()
+        meas_return = self.analysis.workflow.meas_return()
 
-        # Assemble qobj and submit to backend
+        # Assemble and submit to backend
         qobj = assemble(schedules,
                         backend=backend,
                         qobj_header={'metadata': metadata},
-                        meas_level=self._workflow.meas_level(),
-                        meas_return=self._workflow.meas_return(),
-                        shots=self._workflow.shots,
+                        meas_level=meas_level,
+                        meas_return=meas_return,
+                        shots=shots,
                         **kwargs)
         self._job = backend.run(qobj)
         return self
-
-    def run_analysis(self, **params):
-        """Analyze the stored data.
-
-        Returns:
-            any: the output of the analysis,
-        """
-        self.analysis.workflow = self._workflow
-        super().run_analysis(**params)

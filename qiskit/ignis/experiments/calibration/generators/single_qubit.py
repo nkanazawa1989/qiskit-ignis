@@ -25,8 +25,7 @@ from qiskit.ignis.experiments.calibration.cal_base_generator import Base1QCalibr
 class SinglePulseGenerator(Base1QCalibrationGenerator):
     """
     A generator that generates single pulses and scans a single parameter
-    of that pulse. Note that the same pulse may be applied to multiple qubits
-    to perform simultaneous calibration.
+    of that pulse.
     """
     def __init__(self,
                  name: str,
@@ -58,8 +57,9 @@ class SinglePulseGenerator(Base1QCalibrationGenerator):
                          values_to_scan=values_to_scan,
                          ref_frequency=ref_frequency)
 
-    def _template_qcs(self) -> List[QuantumCircuit]:
-        """Create the template quantum circuit.
+    def template_qcs(self) -> List[QuantumCircuit]:
+        """
+        Creates the template quantum circuits.
         """
         cal_sched = self.single_pulse_schedule()
         parameter = list(cal_sched.parameters)[0]
@@ -122,7 +122,7 @@ class RamseyXYGenerator(Base1QCalibrationGenerator):
                          values_to_scan=delays,
                          ref_frequency=ref_frequency)
 
-    def _template_qcs(self) -> List[QuantumCircuit]:
+    def template_qcs(self) -> List[QuantumCircuit]:
         """Create the template quantum circuit.
         """
         cal_series = {'x': self.ramsey_x_schedule(), 'y': self.ramsey_y_schedule()}
