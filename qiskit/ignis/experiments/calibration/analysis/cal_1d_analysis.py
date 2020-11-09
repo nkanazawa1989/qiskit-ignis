@@ -26,7 +26,14 @@ from qiskit.ignis.experiments.calibration.workflow import AnalysisWorkFlow
 
 
 class Calibration1DAnalysis(Analysis):
-    """Calibration experiment analysis."""
+    """
+    Calibration1DAnalysis analyzes experiments in which one parameter
+    is scanned. The values of this parameter form the x_values.
+    The experiment may have several series which are interpreted as
+    different curves. The x_values metadata for each circuit should
+    therefore be a dict with one entry and have the form
+    {parameter_name: parameter_value}.
+    """
 
     def __init__(self,
                  name: Optional[str] = None,
