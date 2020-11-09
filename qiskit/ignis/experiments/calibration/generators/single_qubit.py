@@ -62,7 +62,7 @@ class SinglePulseGenerator(Base1QCalibrationGenerator):
         Creates the template quantum circuits.
         """
         cal_sched = self.single_pulse_schedule()
-        parameter = list(cal_sched.parameters)[0]  # TODO This fails
+        parameter = list(cal_sched.parameters)[0]
 
         template_qc = QuantumCircuit(1, 1, name='single_pulse')
         gate = Gate(parameter.name, 1, [parameter])
