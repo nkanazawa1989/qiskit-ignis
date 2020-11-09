@@ -18,7 +18,6 @@ import numpy as np
 import pandas as pd
 
 from qiskit import pulse, circuit
-from qiskit.circuit import ParameterExpression
 from qiskit.ignis.experiments.calibration import types
 
 
