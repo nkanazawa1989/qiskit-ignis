@@ -13,6 +13,13 @@
 """
 Qiskit Ignis calibration module.
 
+Typically, we calibrate pulse parameters. These pulse parameters are
+stored in a table with their values. The calibration experiments
+rely on generators to produce the circuits and analyze the data
+with an Analysis class, typically responsible for extracting pulse
+parameters from the data. The analysis defines the steps by which
+the data is processed.
+
 Calibration1DAnalysis analyzes experiments in which one parameter is scanned.
 The values of this parameter form the x_values. The experiment may have several
 series which are interpreted as different curves. The x_values metadata for

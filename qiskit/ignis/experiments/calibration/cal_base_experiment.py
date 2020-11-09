@@ -24,12 +24,6 @@ from qiskit.ignis.experiments.base import Experiment
 class BaseCalibrationExperiment(Experiment):
     """
     Class for a calibration experiments.
-    Typically we calibrate pulse parameters. These pulse parameters are
-    stored in a table with their values. The calibration experiments
-    rely on generators to produce the circuits and analyze the data
-    with an Analysis class, typically responsible for extracting pulse
-    parameters from the data. The analysis defines the steps by which
-    the data is processed.
     """
 
     def schedules(self, backend: BaseBackend) -> List[pulse.Schedule]:
