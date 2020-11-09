@@ -13,7 +13,7 @@
 """Qiskit Ignis calibration module."""
 
 from collections import defaultdict
-from typing import Union, Dict, Optional, Any, Iterator, List, Tuple
+from typing import Dict, Optional, Any, Iterator, List, Tuple
 
 import numpy as np
 from qiskit.result import Result, Counts
@@ -28,11 +28,7 @@ from qiskit.ignis.experiments.calibration.workflow import AnalysisWorkFlow
 class Calibration1DAnalysis(Analysis):
     """
     Calibration1DAnalysis analyzes experiments in which one parameter
-    is scanned. The values of this parameter form the x_values.
-    The experiment may have several series which are interpreted as
-    different curves. The x_values metadata for each circuit should
-    therefore be a dict with one entry and have the form
-    {parameter_name: parameter_value}.
+    is scanned.
     """
 
     def __init__(self,
