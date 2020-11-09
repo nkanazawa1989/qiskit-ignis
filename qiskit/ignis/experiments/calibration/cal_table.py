@@ -144,10 +144,7 @@ class PulseTable:
         # convert (amp, phase) pair into complex value
         if use_complex_amplitude:
             if 'amp' in format_dict and 'phase' in format_dict:
-                if not isinstance(format_dict['amp'], ParameterExpression):
-                    format_dict['amp'] *= np.exp(1j * format_dict.pop('phase'))
-                else:
-                    format_dict.pop('phase')
+                format_dict['amp'] *= np.exp(1j * format_dict.pop('phase'))
 
         # convert duration into integer
         if 'duration' in format_dict and isinstance(format_dict['duration'], float):
