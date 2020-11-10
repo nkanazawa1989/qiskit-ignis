@@ -21,8 +21,8 @@ from qiskit.ignis.experiments.calibration import (types,
                                                   generators,
                                                   analysis,
                                                   workflow,
-                                                  cal_table,
                                                   Calibration1DAnalysis)
+from qiskit.ignis.experiments.calibration.instruction_data.database import PulseTable
 from qiskit.ignis.experiments.calibration.cal_base_experiment import BaseCalibrationExperiment
 
 
@@ -30,7 +30,7 @@ class RoughSpectroscopy(BaseCalibrationExperiment):
     """Performs a frequency spectroscopy by scanning the drive channel frequency."""
 
     def __init__(self,
-                 table: cal_table.PulseTable,
+                 table: PulseTable,
                  qubit: int,
                  data_processing: workflow.AnalysisWorkFlow,
                  freq_vals: np.ndarray,
@@ -56,7 +56,7 @@ class RoughSpectroscopy(BaseCalibrationExperiment):
         param_dict = table.get_generator_kwargs(
             qubits=qubit,
             channel='d*',
-            gate_type=pulse_name
+            inst_name=pulse_name
         )
 
         # todo get qubit property from other database.
@@ -87,7 +87,7 @@ class RoughAmplitudeCalibration(BaseCalibrationExperiment):
     """Performs a rough amplitude calibration by scanning the amplitude of the pulse."""
 
     def __init__(self,
-                 table: cal_table.PulseTable,
+                 table: PulseTable,
                  qubit: int,
                  data_processing: workflow.AnalysisWorkFlow,
                  amp_vals: np.ndarray,
@@ -113,7 +113,7 @@ class RoughAmplitudeCalibration(BaseCalibrationExperiment):
         param_dict = table.get_generator_kwargs(
             qubits=qubit,
             channel='d*',
-            gate_type=pulse_name,
+            inst_name=pulse_name,
             parameters='amp'
         )
 

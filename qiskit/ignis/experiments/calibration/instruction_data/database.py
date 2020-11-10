@@ -10,7 +10,10 @@
 # copyright notice, and modified files need to carry a notice indicating
 # that they have been altered from the originals.
 
-"""Data source to generate schedule."""
+"""Local database components.
+
+# TODO add detailed description of databases.
+"""
 
 from typing import Dict, Union, Iterable, Optional, List
 
@@ -18,7 +21,9 @@ import numpy as np
 import pandas as pd
 
 from qiskit import pulse, circuit
+
 from qiskit.ignis.experiments.calibration import types
+from qiskit.ignis.experiments.calibration.exceptions import CalExpError
 
 
 class PulseTable:
@@ -27,32 +32,33 @@ class PulseTable:
     Each entry of this database represents a single parameter associated with the specific pulse,
     and the pulse template is stored in another relational database.
 
-    For example, database entries may look like:
-
-    ```
-    ========================================================================
-     qubits | channel | gate_type | name | value | validation | timestamp
-    --------+---------+-----------+------+-------+------------+-------------
-     (0,)   | d0      | x90p      | amp  | 0.01  | pass       | 2020.01.01
-    --------+---------+-----------+------+-------+------------+-------------
-     (0,)   | d0      | x90p      | amp  | 0.03  | fail       | 2020.01.02
-    --------+---------+-----------+------+-------+------------+-------------
-     (0,1)  | u0      | cr90p     | amp  | 0.04  | pass       | 2020.01.01
-    ------------------------------------------------------------------------
-    ```
-
     You can search for the specific entry by filtering or you can directly generate
     keyword argument for the target pulse factory.
     """
+    TABLE_COLS = ['qubits', 'channel', 'inst_name', 'stretch', 'pulse_type',
+                  'name', 'value', 'validation', 'timestamp']
 
-    def __init__(self, params_collection: pd.DataFrame):
-        self._parameter_collection = params_collection
+    def __init__(self,
+                 params_collection: Optional[pd.DataFrame] = None):
+        """Create new table.
+
+        Args:
+            params_collection: Pandas DataFrame object for pulse parameters.
+        """
+        if params_collection is not None:
+            init_dataframe = params_collection
+        else:
+            init_dataframe = pd.DataFrame(index=[], columns=PulseTable.TABLE_COLS)
+
+        self._parameter_collection = init_dataframe
 
     def get_dataframe(
             self,
             qubits: Optional[Union[int, Iterable[int]]] = None,
             channel: Optional[str] = None,
-            gate_type: Optional[str] = None,
+            inst_name: Optional[str] = None,
+            pulse_type: Optional[str] = None,
+            stretch: Optional[float] = None,
             name: Optional[str] = None,
             validation: Optional[str] = None
     ) -> pd.DataFrame:
@@ -61,7 +67,9 @@ class PulseTable:
         Args:
             qubits: Index of qubit(s) to search for.
             channel: Label of pulse channel to search for. Wildcards can be accepted.
-            gate_type: Name of gate to search for. Wildcards can be accepted.
+            inst_name: Name of gate to search for. Wildcards can be accepted.
+            pulse_type: Name of ParametricPulse generator that is used for pulse creation.
+            stretch: Stretch factor of the pulse.
             name: Name of parameter to search for. Wildcards can be accepted.
             validation: Status of calibration data validation.
 
@@ -71,7 +79,9 @@ class PulseTable:
         return self._find_data(
             qubits=qubits,
             channel=channel,
-            gate_type=gate_type,
+            inst_name=inst_name,
+            pulse_type=pulse_type,
+            stretch=stretch,
             name=name,
             validation=validation)
 
@@ -79,7 +89,9 @@ class PulseTable:
             self,
             qubits: Union[int, Iterable[int]],
             channel: str,
-            gate_type: str,
+            inst_name: str,
+            pulse_type: str,
+            stretch: Optional[float] = 1.0,
             parameters: Optional[Union[str, List[str]]] = None,
             use_complex_amplitude: bool = True,
             remove_bad_data: bool = True
@@ -98,7 +110,9 @@ class PulseTable:
         Args:
             qubits: Index of qubit(s) to search for.
             channel: Label of pulse channel to search for.
-            gate_type: Name of gate to search for.
+            inst_name: Name of gate to search for.
+            pulse_type: Name of ParametricPulse generator that is used for pulse creation.
+            stretch: Stretch factor of the pulse. Default to 1.0.
             parameters: Name of parameter to parametrize.
                 Corresponding calibration data is replaced with Qiskit parameter object.
             use_complex_amplitude: Set `True` to return complex valued amplitude.
@@ -118,7 +132,9 @@ class PulseTable:
         matched_data = self._find_data(
             qubits=qubits,
             channel=channel,
-            gate_type=gate_type
+            inst_name=inst_name,
+            pulse_type=pulse_type,
+            stretch=stretch
         )
         params_dict = PulseTable._flatten(matched_data)
 
@@ -143,7 +159,7 @@ class PulseTable:
         # convert (amp, phase) pair into complex value
         if use_complex_amplitude:
             if 'amp' in format_dict and 'phase' in format_dict:
-                format_dict['amp'] *= np.exp(1j * format_dict.pop('phase'))
+                format_dict['amp'] *= np.exp(1j * format_dict['phase'])
 
         # convert duration into integer
         if 'duration' in format_dict and isinstance(format_dict['duration'], float):
@@ -155,7 +171,9 @@ class PulseTable:
             self,
             qubits: Optional[Union[int, Iterable[int]]] = None,
             channel: Optional[str] = None,
-            gate_type: Optional[str] = None,
+            inst_name: Optional[str] = None,
+            pulse_type: Optional[str] = None,
+            stretch: Optional[float] = None,
             name: Optional[str] = None,
             validation: Optional[str] = None,
             only_latest: bool = True
@@ -171,7 +189,9 @@ class PulseTable:
         Args:
             qubits: Index of qubit(s) to search for.
             channel: Label of pulse channel to search for. Wildcards can be accepted.
-            gate_type: Name of gate to search for. Wildcards can be accepted.
+            inst_name: Name of gate to search for. Wildcards can be accepted.
+            pulse_type: Name of ParametricPulse generator that is used for pulse creation.
+            stretch: Stretch factor of the pulse.
             name: Name of parameter to search for. Wildcards can be accepted.
             validation: Status of calibration data validation.
             only_latest: Set `True` to only return single parameter with the latest timestamp.
@@ -184,7 +204,9 @@ class PulseTable:
         matched_data = self._find_data(
             qubits=qubits,
             channel=channel,
-            gate_type=gate_type,
+            inst_name=inst_name,
+            pulse_type=pulse_type,
+            stretch=stretch,
             name=name,
             validation=validation
         )
@@ -204,17 +226,21 @@ class PulseTable:
             self,
             qubits: Union[int, Iterable[int]],
             channel: str,
-            gate_type: str,
+            inst_name: str,
+            pulse_type: str,
+            stretch: float,
             name: str,
             cal_data: Union[int, float, complex, types.CalValue]
     ):
         """Set calibration data to the local database.
 
         Args:
-            qubits: Index of qubit(s) to search for.
-            channel: Label of pulse channel to search for.
-            gate_type: Name of gate to search for.
-            name: Name of parameter to search for.
+            qubits: Index of qubit(s).
+            channel: Label of pulse channel.
+            inst_name: Name of gate.
+            pulse_type: Name of ParametricPulse generator that is used for pulse creation.
+            stretch: Stretch factor of the pulse.
+            name: Name of parameter.
             cal_data: Parameter value to update. This can be raw value or `CalValue` instance
                 that contains validation status and timestamp.
                 If raw value is provided current time is used for the timestamp.
@@ -235,7 +261,9 @@ class PulseTable:
         self._parameter_collection = self._parameter_collection.append(
             {'qubits': qubits,
              'channel': channel,
-             'gate_type': gate_type,
+             'inst_name': inst_name,
+             'stretch': stretch,
+             'pulse_type': pulse_type,
              'name': name,
              'value': cal_data.value,
              'validation': cal_data.validation,
@@ -243,11 +271,35 @@ class PulseTable:
             ignore_index=True
         )
 
+    def set_validation_status(
+            self,
+            data_index: int,
+            status: str
+    ):
+        """Update validation status of specific pulse table entry.
+
+        Args:
+            data_index: Index of pandas data frame.
+            status: New status string. `pass`, `fail`, and `none` can be accepted.
+
+        Raises:
+            CalExpError: When invalid status string is specified.
+        """
+        try:
+            status = types.ValidationStatus(status).value
+        except ValueError:
+            raise CalExpError('Validation status {status} is not valid string.'
+                              ''.format(status=status))
+
+        self._parameter_collection.at[data_index, 'validation'] = status
+
     def _find_data(
             self,
             qubits: Optional[Union[int, List[int]]] = None,
             channel: Optional[str] = None,
-            gate_type: Optional[str] = None,
+            inst_name: Optional[str] = None,
+            pulse_type: Optional[str] = None,
+            stretch: Optional[float] = None,
             name: Optional[str] = None,
             validation: Optional[str] = None
     ) -> pd.DataFrame:
@@ -266,9 +318,17 @@ class PulseTable:
         if channel is not None:
             flags.append(self._parameter_collection['channel'].str.match(channel))
 
-        # filter by gate name
-        if gate_type is not None:
-            flags.append(self._parameter_collection['gate_type'].str.match(gate_type))
+        # filter by instruction name
+        if inst_name is not None:
+            flags.append(self._parameter_collection['inst_name'].str.match(inst_name))
+
+        # filter by pulse pulse generator type
+        if pulse_type is not None:
+            flags.append(self._parameter_collection['pulse_type'].str.match(pulse_type))
+
+        # filter by stretch factor
+        if stretch is not None:
+            flags.append(self._parameter_collection['stretch'] == stretch)
 
         # filter by parameter name
         if name is not None:
@@ -287,7 +347,7 @@ class PulseTable:
     def _flatten(cls, entries: pd.DataFrame) -> Dict[str, List[types.CalValue]]:
         """A helper function to convert pandas data series into dictionary."""
         # group duplicated entries
-        grouped_params = entries.groupby(['qubits', 'channel', 'gate_type', 'name']).agg({
+        grouped_params = entries.groupby(['qubits', 'channel', 'inst_name', 'name']).agg({
             'value': tuple,
             'validation': tuple,
             'timestamp': tuple
@@ -306,15 +366,130 @@ class PulseTable:
 
 
 class ScheduleTemplate:
+    """Schedule template.
 
-    # TODO: support parametrized schedule, eg Rx(theta) schedule
+    TODO: write detailed dosctring
+    """
+    TABLE_COLS = ['qubits', 'gate_name', 'schedule']
 
-    def __init__(self, templates: List[Dict[str, Union[str, pulse.Schedule]]]):
-        self._templates = templates
+    def __init__(self,
+                 template_collection: Optional[pd.DataFrame] = None):
+        """Create new table.
 
-    def get_schedule(self,
-                     qubits: Union[int, Iterable[int]],
-                     name: str,
-                     param_table: PulseTable):
-        """"""
-        pass
+        Args:
+            template_collection: Pandas DataFrame object for pulse template.
+        """
+        if template_collection is not None:
+            init_dataframe = template_collection
+        else:
+            init_dataframe = pd.DataFrame(index=[], columns=ScheduleTemplate.TABLE_COLS)
+
+        self._template_collection = init_dataframe
+
+    def get_dataframe(
+            self,
+            qubits: Optional[Union[int, Iterable[int]]] = None,
+            gate_name: Optional[str] = None
+    ) -> pd.DataFrame:
+        """Get raw pandas dataframe of search results.
+
+        Args:
+            qubits: Index of qubit(s) to search for.
+            gate_name: Name of gate to search for. Wildcards can be accepted.
+
+        Returns:
+            Pandas dataframe of matched parameters.
+        """
+        return self._find_data(
+            qubits=qubits,
+            gate_name=gate_name)
+
+    def get_template_schedule(
+            self,
+            qubits: Optional[Union[int, List[int]]],
+            gate_name: Optional[str]
+    ) -> pulse.Schedule:
+        """Get specific schedule template.
+
+        Args:
+            qubits: Index of qubit(s) to search for.
+            gate_name: Name of gate to search for.
+
+        Returns:
+            Pulse Schedule.
+        """
+        matched_data = self._find_data(
+            qubits=qubits,
+            gate_name=gate_name
+        )
+        if len(matched_data) > 1:
+            raise CalExpError('More than 1 entries are found. Check the database.')
+
+        return matched_data.iloc[0].schedule
+
+    def add_template_schedule(
+            self,
+            qubits: Optional[Union[int, Iterable[int]]],
+            gate_name: Optional[str],
+            schedule: pulse.Schedule
+    ):
+        """Add new schedule template.
+
+        If the entry already exists in the database, the existing entry will be overwritten.
+
+        Args:
+            qubits: Index of qubit(s) to search for.
+            gate_name: Name of gate to search for.
+            schedule: Schedule template. This schedule should be parametrized.
+        """
+        if isinstance(qubits, int):
+            qubits = (qubits,)
+        else:
+            qubits = tuple(qubits)
+
+        matched_data = self._find_data(
+            qubits=qubits,
+            gate_name=gate_name
+        )
+
+        new_entry = {
+            'qubits': qubits,
+            'gate_name': gate_name,
+            'schedule': schedule
+        }
+
+        if len(matched_data) > 0:
+            if len(matched_data) > 1:
+                raise CalExpError('More than 1 entries are found. Check the database.')
+            # overwrite existing entry
+            self._template_collection.iloc[matched_data.index[0]] = pd.Series(new_entry)
+        else:
+            # add new entry
+            self._template_collection = self._template_collection.append(
+                new_entry,
+                ignore_index=True)
+
+    def _find_data(
+            self,
+            qubits: Optional[Union[int, List[int]]] = None,
+            gate_name: Optional[str] = None
+    ) -> pd.DataFrame:
+        """A helper function to return matched dataframe."""
+        flags = []
+
+        # filter by qubit index
+        if qubits is not None:
+            if isinstance(qubits, int):
+                qubits = (qubits,)
+            else:
+                qubits = tuple(qubits)
+            flags.append(self._template_collection['qubits'] == qubits)
+
+        # filter by gate name
+        if gate_name is not None:
+            flags.append(self._template_collection['gate_name'].str.match(gate_name))
+
+        if flags:
+            return self._template_collection[np.logical_and.reduce(flags)]
+        else:
+            return self._template_collection
