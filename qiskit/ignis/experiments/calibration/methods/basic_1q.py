@@ -21,8 +21,8 @@ from qiskit.ignis.experiments.calibration import (types,
                                                   generators,
                                                   workflow,
                                                   Calibration1DAnalysis)
+from qiskit.ignis.experiments.calibration.instruction_data.database import PulseTable
 from qiskit.ignis.experiments.calibration.cal_base_experiment import BaseCalibrationExperiment
-from qiskit.ignis.experiments.calibration.cal_table import PulseTable
 from qiskit.ignis.experiments.calibration.analysis.peak import GaussianFit
 from qiskit.ignis.experiments.calibration.analysis.trigonometric import CosinusoidalFit
 
@@ -57,7 +57,7 @@ class RoughSpectroscopy(BaseCalibrationExperiment):
         param_dict = table.get_generator_kwargs(
             qubits=qubit,
             channel='d*',
-            gate_type=pulse_name
+            inst_name=pulse_name
         )
 
         # todo get qubit property from other database.
@@ -113,7 +113,7 @@ class RoughAmplitudeCalibration(BaseCalibrationExperiment):
         param_dict = table.get_generator_kwargs(
             qubits=qubit,
             channel='d*',
-            gate_type=pulse_name,
+            inst_name=pulse_name,
             parameters='amp'
         )
 
