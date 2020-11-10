@@ -64,6 +64,8 @@ class FakeSingleQubitTable(PulseTable):
                     fake_table['qubits'].append((qind, ))
                     fake_table['channel'].append('d{qind:d}'.format(qind=qind))
                     fake_table['inst_name'].append(gate)
+                    fake_table['stretch'].append(1.0)
+                    fake_table['pulse_type'].append('drag')
                     fake_table['name'].append(pname)
                     fake_table['value'].append(value)
                     fake_table['validation'].append('none')
