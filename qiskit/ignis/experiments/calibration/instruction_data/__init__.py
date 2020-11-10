@@ -11,5 +11,3 @@
 # that they have been altered from the originals.
 
 """Local relational database for instruction data."""
-
-from qiskit.ignis.experiments.calibration.instruction_data.interface import InstructionSet
