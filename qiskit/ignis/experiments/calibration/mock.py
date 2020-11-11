@@ -15,10 +15,10 @@
 from collections import defaultdict
 
 import pandas as pd
-from qiskit.ignis.experiments.calibration import cal_table
+from qiskit.ignis.experiments.calibration.instruction_data.database import PulseTable
 
 
-class FakeSingleQubitTable(cal_table.PulseTable):
+class FakeSingleQubitTable(PulseTable):
     """Fake parameter table. For debugging and unittest purposes."""
     GATE_TYPES = ['x90p', 'xp']
 
@@ -63,7 +63,9 @@ class FakeSingleQubitTable(cal_table.PulseTable):
 
                     fake_table['qubits'].append((qind, ))
                     fake_table['channel'].append('d{qind:d}'.format(qind=qind))
-                    fake_table['gate_type'].append(gate)
+                    fake_table['inst_name'].append(gate)
+                    fake_table['stretch'].append(1.0)
+                    fake_table['pulse_type'].append('drag')
                     fake_table['name'].append(pname)
                     fake_table['value'].append(value)
                     fake_table['validation'].append('none')
