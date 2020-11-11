@@ -104,12 +104,12 @@ class FakeTwoQubitParameters(PulseTable):
                 (1, 0): TwoQubitPulse(channel='u1', amp=0.08, phase=np.pi),
             },
             'cr90p_d': {
-                (0, 1): TwoQubitPulse(channel='d1', amp=0.02, phase=0.2),
-                (1, 0): TwoQubitPulse(channel='d0', amp=0.03, phase=0.2)
+                (1, ): TwoQubitPulse(channel='d1', amp=0.02, phase=0.2),
+                (0, ): TwoQubitPulse(channel='d0', amp=0.03, phase=0.2)
             },
             'cr90m_d': {
-                (0, 1): TwoQubitPulse(channel='d1', amp=0.02, phase=0.2 + np.pi),
-                (1, 0): TwoQubitPulse(channel='d0', amp=0.03, phase=0.2 + np.pi)
+                (1, ): TwoQubitPulse(channel='d1', amp=0.02, phase=0.2 + np.pi),
+                (0, ): TwoQubitPulse(channel='d0', amp=0.03, phase=0.2 + np.pi)
             }
         }
 
