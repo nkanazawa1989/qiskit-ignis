@@ -56,10 +56,8 @@ def compose_schedule(
             # get pulse shape type
             try:
                 pulse_type = parametric_shapes(pulse_data.__class__).name
-                backend_defined = True
             except ValueError:
                 pulse_type = pulse_data.__class__.__name__
-                backend_defined = False
             # get parameters from pulse table
             pulse_params = pulse_table.get_instruction_kwargs(
                 qubits=qubits,
@@ -67,11 +65,9 @@ def compose_schedule(
                 inst_name=sched_component.name,
                 pulse_type=pulse_type,
                 stretch_factor=stretch_factor)
+
             binds = {pobj: pulse_params[pobj.name] for pobj in sched_component.parameters}
             sched_component = deepcopy(sched_component).assign_parameters(binds)
-            if not backend_defined:
-                # convert into waveform if pulse is not defined by backend
-                sched_component = sched_component.get_waveform()
 
         gate_sched.insert(t0, sched_component, inplace=True)
 
@@ -125,7 +121,6 @@ def decompose_schedule(
 
             for pname, pval in pulse_data.parameters.items():
                 parameter_attributes = {
-                    'qubits': qubits,
                     'channel': sched_component.channel.name,
                     'inst_name': pulse_name,
                     'pulse_type': pulse_type,
@@ -143,16 +138,20 @@ def decompose_schedule(
                 else:
                     entries = {pname: pval}
                 for _pname, _pval in entries.items():
-                    pulse_table.set_parameter(name=_pname, cal_data=_pval, **parameter_attributes)
+                    pulse_table.set_parameter(qubits=qubits,
+                                              name=_pname,
+                                              cal_data=_pval,
+                                              **parameter_attributes)
 
                 # update pulse parameter and parameter library
                 if pname in ['duration', 'width']:
                     # TODO support parametrization of duration and width.
-                    parameter_kwargs[pname] = pval
+                    new_parameter = pval
                 else:
                     new_parameter = circuit.Parameter(pname)
-                    parameter_kwargs[pname] = new_parameter
-                    parameter_library[parameter_id] = new_parameter
+
+                parameter_kwargs[pname] = new_parameter
+                parameter_library[parameter_id] = new_parameter
 
             # overwrite schedule component
             sched_component = pulse.Play(type(pulse_data)(**parameter_kwargs, name=pulse_name),

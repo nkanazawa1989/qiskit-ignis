@@ -118,7 +118,7 @@ class InstructionSet:
                           qubits: Union[int, Iterable[int]],
                           name: str,
                           schedule: pulse.Schedule,
-                          stretch_factor: float=1.0):
+                          stretch_factor: float = 1.0):
         """Add new schedule to database.
 
         Args:
