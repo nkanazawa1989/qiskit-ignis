@@ -14,18 +14,19 @@
 
 from copy import deepcopy
 from enum import Enum
-from typing import Union, Iterable, Optional, Tuple, Dict
+from typing import Optional, Tuple, Dict
 
 import numpy as np
+from qiskit.qobj.converters.pulse_instruction import ParametricPulseShapes
 
 from qiskit import pulse, circuit
-from qiskit.qobj.converters.pulse_instruction import ParametricPulseShapes
+from qiskit.ignis.experiments.calibration.exceptions import CalExpError
 from qiskit.ignis.experiments.calibration.instruction_data.database import (PulseTable,
                                                                             ScheduleTemplate)
 
 
 def compose_schedule(
-        qubits: Union[int, Iterable[int]],
+        channel_qubit_map: Dict[str, Tuple[int]],
         template_sched: pulse.Schedule,
         pulse_table: PulseTable,
         stretch_factor: float,
@@ -35,7 +36,7 @@ def compose_schedule(
     :py:class:`PulseTable`.
 
     Args:
-        qubits: Index of target qubit.
+        channel_qubit_map: A map between pulse channel string and qubit index.
         template_sched: Parametrized schedule template.
         pulse_table: PulseTable where pulse parameters are stored.
         stretch_factor: Stretch factor of the pulse, typically used for error mitigation.
@@ -58,6 +59,14 @@ def compose_schedule(
                 pulse_type = parametric_shapes(pulse_data.__class__).name
             except ValueError:
                 pulse_type = pulse_data.__class__.__name__
+
+            # get qubit index
+            if sched_component.channel.name in channel_qubit_map:
+                qubits = tuple(channel_qubit_map[sched_component.channel.name])
+            else:
+                raise CalExpError('Qubits associated with channel {chname} is not defined.'
+                                  ''.format(chname=sched_component.channel.name))
+
             # get parameters from pulse table
             pulse_params = pulse_table.get_instruction_kwargs(
                 qubits=qubits,
@@ -79,7 +88,7 @@ def compose_schedule(
 
 
 def decompose_schedule(
-        qubits: Union[int, Iterable[int]],
+        channel_qubit_map: Dict[str, Tuple[int]],
         gate_sched: pulse.Schedule,
         pulse_table: PulseTable,
         parameter_library: Dict[str, circuit.Parameter],
@@ -90,7 +99,7 @@ def decompose_schedule(
     Decoupled parameters are stored in :py:class:`PulseTable`.
 
     Args:
-        qubits: Index of target qubit.
+        channel_qubit_map: A map between pulse channel string and qubit index.
         gate_sched: Schedule that implements specific quantum gate.
         pulse_table: PulseTable where pulse parameters are stored.
         parameter_library: Collection of previously defined parameters.
@@ -122,6 +131,13 @@ def decompose_schedule(
                 pulse_name = pulse_data.name
             else:
                 pulse_name = 'pulse:{pulse_id:d}'.format(pulse_id=hash(pulse_data))
+
+            # get qubit index
+            if sched_component.channel.name in channel_qubit_map:
+                qubits = tuple(channel_qubit_map[sched_component.channel.name])
+            else:
+                raise CalExpError('Qubits associated with channel {chname} is not defined.'
+                                  ''.format(chname=sched_component.channel.name))
 
             for pname, pval in pulse_data.parameters.items():
                 # check if parameter value is parameter object
@@ -171,6 +187,7 @@ def decompose_schedule(
 
 
 def parse_backend_instmap(
+        channel_qubit_map: Dict[str, Tuple[int]],
         instmap: pulse.InstructionScheduleMap,
         parameter_library: Dict[str, circuit.Parameter],
         parametric_shapes: Optional[Enum] = None) -> Tuple[PulseTable, ScheduleTemplate]:
@@ -178,6 +195,7 @@ def parse_backend_instmap(
     pt:class:`ScheduleTemplate`. Stretch factor is default to 1.0.
 
     Args:
+        channel_qubit_map: A map between pulse channel string and qubit index.
         instmap: Instruction schedule map object that have backend calibrated gates.
         parameter_library: Collection of previously defined parameters.
         parametric_shapes: Enum objet that maps pulse name and ParametricPulse.
@@ -192,7 +210,7 @@ def parse_backend_instmap(
         for qinds, sched in qubit_table.items():
             # create parametrized schedule
             temp_sched = decompose_schedule(
-                qubits=qinds,
+                channel_qubit_map=channel_qubit_map,
                 gate_sched=sched,
                 pulse_table=pulse_table,
                 parameter_library=parameter_library,

@@ -16,7 +16,7 @@
 """
 
 from enum import Enum
-from typing import Dict, Union, Iterable, Optional, List
+from typing import Dict, Union, Iterable, Optional, List, Tuple
 
 from qiskit import pulse, circuit
 from qiskit.providers.ibmq import IBMQBackend
@@ -29,6 +29,7 @@ from qiskit.ignis.experiments.calibration.instruction_data import utils
 class InstructionSet:
     def __init__(self,
                  backend_name: str,
+                 channel_qubit_map: Dict[str, Tuple[int]],
                  pulse_table: Optional[PulseTable] = None,
                  schedule_template: Optional[ScheduleTemplate] = None,
                  parameter_library: Optional[Dict[str, circuit.Parameter]] = None,
@@ -37,6 +38,7 @@ class InstructionSet:
 
         Args:
             backend_name: Name of backend that this database is associated with.
+            channel_qubit_map: A map between pulse channel string and qubit index.
             pulse_table: Database for pulse parameters.
             schedule_template: Database for pulse program.
             parameter_library: Collection of previously defined parameters.
@@ -44,6 +46,7 @@ class InstructionSet:
         """
         self._backend_name = backend_name
         self._parameter_library = parameter_library or dict()
+        self._channel_qubit_map = channel_qubit_map
 
         self._pulse_table = pulse_table or PulseTable()
         self._schedule_template = schedule_template or ScheduleTemplate()
@@ -61,12 +64,18 @@ class InstructionSet:
         """
         parameter_library = dict()
 
+        channel_qubit_map = dict()
+        for chname, ch_properties in backend.configuration().channels.items():
+            channel_qubit_map[chname] = tuple(ch_properties['operates']['qubits'])
+
         pulse_table, sched_template = utils.parse_backend_instmap(
+            channel_qubit_map=channel_qubit_map,
             instmap=backend.defaults(refresh=True).instruction_schedule_map,
             parameter_library=parameter_library)
 
         return InstructionSet(
             backend_name=backend.name(),
+            channel_qubit_map=channel_qubit_map,
             pulse_table=pulse_table,
             schedule_template=sched_template,
             parameter_library=parameter_library)
@@ -107,7 +116,7 @@ class InstructionSet:
         temp_sched = self.schedule_template.get_template_schedule(qubits, name)
 
         return utils.compose_schedule(
-            qubits=qubits,
+            channel_qubit_map=self._channel_qubit_map,
             template_sched=temp_sched,
             pulse_table=self.pulse_table,
             stretch_factor=stretch_factor,
@@ -128,7 +137,7 @@ class InstructionSet:
             stretch_factor: Stretch factor of the pulse, typically used for error mitigation.
         """
         temp_sched = utils.decompose_schedule(
-            qubits=qubits,
+            channel_qubit_map=self._channel_qubit_map,
             gate_sched=schedule,
             pulse_table=self.pulse_table,
             parameter_library=self._parameter_library,
@@ -150,7 +159,7 @@ class InstructionSet:
 
         for _, entry in self.schedule_template.filter_data().iterrows():
             composed_sched = utils.compose_schedule(
-                qubits=entry.qubits,
+                channel_qubit_map=self._channel_qubit_map,
                 template_sched=entry.schedule,
                 pulse_table=self.pulse_table,
                 stretch_factor=stretch_factor,
