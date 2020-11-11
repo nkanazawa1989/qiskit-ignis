@@ -129,7 +129,7 @@ def decompose_schedule(
                     'channel': sched_component.channel.name,
                     'inst_name': pulse_name,
                     'pulse_type': pulse_type,
-                    'stretch': stretch_factor
+                    'stretch_factor': stretch_factor
                 }
                 # check if parameter is already defined
                 parameter_id = str(hash(tuple(parameter_attributes.values()) + (pname, )))

@@ -262,7 +262,7 @@ class PulseTable:
             {'qubits': qubits,
              'channel': channel,
              'inst_name': inst_name,
-             'stretch': stretch_factor,
+             'stretch_factor': stretch_factor,
              'pulse_type': pulse_type,
              'name': name,
              'value': cal_data.value,
