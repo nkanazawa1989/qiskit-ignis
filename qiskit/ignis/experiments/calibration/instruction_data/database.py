@@ -35,7 +35,7 @@ class PulseTable:
     You can search for the specific entry by filtering or you can directly generate
     keyword argument for the target pulse factory.
     """
-    TABLE_COLS = ['qubits', 'channel', 'inst_name', 'stretch', 'pulse_type',
+    TABLE_COLS = ['qubits', 'channel', 'inst_name', 'stretch_factor', 'pulse_type',
                   'name', 'value', 'validation', 'timestamp']
 
     def __init__(self,
@@ -52,24 +52,24 @@ class PulseTable:
 
         self._parameter_collection = init_dataframe
 
-    def get_dataframe(
+    def filter_data(
             self,
             qubits: Optional[Union[int, Iterable[int]]] = None,
             channel: Optional[str] = None,
             inst_name: Optional[str] = None,
             pulse_type: Optional[str] = None,
-            stretch: Optional[float] = None,
+            stretch_factor: Optional[float] = None,
             name: Optional[str] = None,
             validation: Optional[str] = None
     ) -> pd.DataFrame:
-        """Get raw pandas dataframe of search results.
+        """Get raw pandas dataframe of waveform parameters.
 
         Args:
             qubits: Index of qubit(s) to search for.
             channel: Label of pulse channel to search for. Wildcards can be accepted.
             inst_name: Name of gate to search for. Wildcards can be accepted.
-            pulse_type: Name of ParametricPulse generator that is used for pulse creation.
-            stretch: Stretch factor of the pulse.
+            pulse_type: Name of ParametricPulse shape that is used for pulse creation.
+            stretch_factor: Stretch factor of the pulse, typically used for error mitigation.
             name: Name of parameter to search for. Wildcards can be accepted.
             validation: Status of calibration data validation.
 
@@ -81,24 +81,24 @@ class PulseTable:
             channel=channel,
             inst_name=inst_name,
             pulse_type=pulse_type,
-            stretch=stretch,
+            stretch_factor=stretch_factor,
             name=name,
             validation=validation)
 
-    def get_generator_kwargs(
+    def get_instruction_kwargs(
             self,
             qubits: Union[int, Iterable[int]],
             channel: str,
             inst_name: str,
             pulse_type: str,
-            stretch: Optional[float] = 1.0,
+            stretch_factor: Optional[float] = 1.0,
             parameters: Optional[Union[str, List[str]]] = None,
             use_complex_amplitude: bool = True,
             remove_bad_data: bool = True
     ) -> Dict[str, Union[int, float, complex, circuit.Parameter]]:
-        """Get kwargs of calibration parameters to feed into experiment generator.
+        """Get kwargs of calibration parameters to feed into ParametricPulse instruction.
 
-        Qubit index, channel and gate type should be specified. Wildcards cannot be used.
+        Qubit index, channel, inst_name, pulse_type should be specified. Wildcards cannot be used.
         This returns only latest calibration data and calibration namespace is removed.
         By default amplitude and phase are converted into complex valued amplitude
         and data entry with bad validation status is not contained in the returned dictionary.
@@ -111,8 +111,8 @@ class PulseTable:
             qubits: Index of qubit(s) to search for.
             channel: Label of pulse channel to search for.
             inst_name: Name of gate to search for.
-            pulse_type: Name of ParametricPulse generator that is used for pulse creation.
-            stretch: Stretch factor of the pulse. Default to 1.0.
+            pulse_type: Name of ParametricPulse shape that is used for pulse creation.
+            stretch_factor: Stretch factor of the pulse, typically used for error mitigation.
             parameters: Name of parameter to parametrize.
                 Corresponding calibration data is replaced with Qiskit parameter object.
             use_complex_amplitude: Set `True` to return complex valued amplitude.
@@ -122,7 +122,7 @@ class PulseTable:
                 filter out bad calibration data to construct valid keyword arguments.
 
         Returns:
-            Python keyword arguments for experiment generator.
+            Python keyword arguments for ParametricPulse instruction.
         """
         if parameters is None:
             parameters = []
@@ -134,7 +134,7 @@ class PulseTable:
             channel=channel,
             inst_name=inst_name,
             pulse_type=pulse_type,
-            stretch=stretch
+            stretch_factor=stretch_factor
         )
         params_dict = PulseTable._flatten(matched_data)
 
@@ -159,7 +159,7 @@ class PulseTable:
         # convert (amp, phase) pair into complex value
         if use_complex_amplitude:
             if 'amp' in format_dict and 'phase' in format_dict:
-                format_dict['amp'] *= np.exp(1j * format_dict['phase'])
+                format_dict['amp'] *= np.exp(1j * format_dict.pop('phase'))
 
         # convert duration into integer
         if 'duration' in format_dict and isinstance(format_dict['duration'], float):
@@ -167,22 +167,22 @@ class PulseTable:
 
         return format_dict
 
-    def get_cal_data(
+    def get_parameter(
             self,
             qubits: Optional[Union[int, Iterable[int]]] = None,
             channel: Optional[str] = None,
             inst_name: Optional[str] = None,
             pulse_type: Optional[str] = None,
-            stretch: Optional[float] = None,
+            stretch_factor: Optional[float] = None,
             name: Optional[str] = None,
             validation: Optional[str] = None,
             only_latest: bool = True
     ) -> Dict[str, Union[types.CalValue, List[types.CalValue]]]:
-        """Get calibration data from the local database.
+        """Get waveform parameter from the local database.
 
-        Return the calibration data as parameter value, validation result and timestamp
-        assembled in a python NamedTuple.
-        Parameter names are unique within the calibration namespace.
+        Return the parameter value, validation result and timestamp assembled in NamedTuple.
+        Each entry is returned as python dictionary with unique parameter name
+        created based on calibration namespace.
         For example, the parameter `amp` associated with qubit 0, channel `d0`
         and `x90p` gate has the unique name `q0.x90p.amp`.
 
@@ -190,8 +190,8 @@ class PulseTable:
             qubits: Index of qubit(s) to search for.
             channel: Label of pulse channel to search for. Wildcards can be accepted.
             inst_name: Name of gate to search for. Wildcards can be accepted.
-            pulse_type: Name of ParametricPulse generator that is used for pulse creation.
-            stretch: Stretch factor of the pulse.
+            pulse_type: Name of ParametricPulse shape that is used for pulse creation.
+            stretch_factor: Stretch factor of the pulse, typically used for error mitigation.
             name: Name of parameter to search for. Wildcards can be accepted.
             validation: Status of calibration data validation.
             only_latest: Set `True` to only return single parameter with the latest timestamp.
@@ -206,7 +206,7 @@ class PulseTable:
             channel=channel,
             inst_name=inst_name,
             pulse_type=pulse_type,
-            stretch=stretch,
+            stretch_factor=stretch_factor,
             name=name,
             validation=validation
         )
@@ -222,24 +222,24 @@ class PulseTable:
 
         return dict(params_dict)
 
-    def set_cal_data(
+    def set_parameter(
             self,
             qubits: Union[int, Iterable[int]],
             channel: str,
             inst_name: str,
             pulse_type: str,
-            stretch: float,
+            stretch_factor: float,
             name: str,
             cal_data: Union[int, float, complex, types.CalValue]
     ):
-        """Set calibration data to the local database.
+        """Set waveform parameter to the local database.
 
         Args:
             qubits: Index of qubit(s).
             channel: Label of pulse channel.
             inst_name: Name of gate.
-            pulse_type: Name of ParametricPulse generator that is used for pulse creation.
-            stretch: Stretch factor of the pulse.
+            pulse_type: Name of ParametricPulse shape that is used for pulse creation.
+            stretch_factor: Stretch factor of the pulse, typically used for error mitigation.
             name: Name of parameter.
             cal_data: Parameter value to update. This can be raw value or `CalValue` instance
                 that contains validation status and timestamp.
@@ -262,7 +262,7 @@ class PulseTable:
             {'qubits': qubits,
              'channel': channel,
              'inst_name': inst_name,
-             'stretch': stretch,
+             'stretch': stretch_factor,
              'pulse_type': pulse_type,
              'name': name,
              'value': cal_data.value,
@@ -299,7 +299,7 @@ class PulseTable:
             channel: Optional[str] = None,
             inst_name: Optional[str] = None,
             pulse_type: Optional[str] = None,
-            stretch: Optional[float] = None,
+            stretch_factor: Optional[float] = None,
             name: Optional[str] = None,
             validation: Optional[str] = None
     ) -> pd.DataFrame:
@@ -322,13 +322,13 @@ class PulseTable:
         if inst_name is not None:
             flags.append(self._parameter_collection['inst_name'].str.match(inst_name))
 
-        # filter by pulse pulse generator type
+        # filter by pulse pulse shape type
         if pulse_type is not None:
             flags.append(self._parameter_collection['pulse_type'].str.match(pulse_type))
 
         # filter by stretch factor
-        if stretch is not None:
-            flags.append(self._parameter_collection['stretch'] == stretch)
+        if stretch_factor is not None:
+            flags.append(self._parameter_collection['stretch_factor'] == stretch_factor)
 
         # filter by parameter name
         if name is not None:
@@ -386,12 +386,12 @@ class ScheduleTemplate:
 
         self._template_collection = init_dataframe
 
-    def get_dataframe(
+    def filter_data(
             self,
             qubits: Optional[Union[int, Iterable[int]]] = None,
             gate_name: Optional[str] = None
     ) -> pd.DataFrame:
-        """Get raw pandas dataframe of search results.
+        """Get raw pandas dataframe of pulse schedules.
 
         Args:
             qubits: Index of qubit(s) to search for.
@@ -409,7 +409,7 @@ class ScheduleTemplate:
             qubits: Optional[Union[int, List[int]]],
             gate_name: Optional[str]
     ) -> pulse.Schedule:
-        """Get specific schedule template.
+        """Get template schedule from the local database.
 
         Args:
             qubits: Index of qubit(s) to search for.
@@ -427,13 +427,13 @@ class ScheduleTemplate:
 
         return matched_data.iloc[0].schedule
 
-    def add_template_schedule(
+    def set_template_schedule(
             self,
             qubits: Optional[Union[int, Iterable[int]]],
             gate_name: Optional[str],
             schedule: pulse.Schedule
     ):
-        """Add new schedule template.
+        """Set template schedule to the local database.
 
         If the entry already exists in the database, the existing entry will be overwritten.
 
