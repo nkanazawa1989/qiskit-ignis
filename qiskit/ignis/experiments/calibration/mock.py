@@ -13,60 +13,118 @@
 """Mock database."""
 
 from collections import defaultdict
+from dataclasses import dataclass
 
 import pandas as pd
 from qiskit.ignis.experiments.calibration.instruction_data.database import PulseTable
+import numpy as np
+from typing import Dict, Union
 
 
-class FakeSingleQubitTable(PulseTable):
-    """Fake parameter table. For debugging and unittest purposes."""
-    GATE_TYPES = ['x90p', 'xp']
+@dataclass(frozen=True)
+class SingleQubitPulse:
+    channel: str = 'd0'
+    shape: str = 'drag'
+    duration: int = 160
+    amp: float = 0.04
+    phase: float = 0
+    sigma: float = 40
+    beta: float = 1.5
+    timestamp: pd.Timestamp = pd.Timestamp('2020-01-01 00:00:00')
 
-    def __init__(self,
-                 n_qubits: int,
-                 default_duration: int = 160,
-                 default_amp: float = 0.08,
-                 default_phase: float = 0,
-                 default_sigma: float = 40.,
-                 default_beta: float = 1.5,
-                 caldate: str = '2020-01-01 00:00:00'):
-        """Create new parameter table.
+    def to_dict(self) -> Dict[str, Union[int, float]]:
+        """Return parameters as dictionary.
 
-        Args:
-            n_qubits: Number of qubits in this system.
-            default_duration: Duration of single qubit gates.
-            default_amp: Amplitude of single qubit gates.
-            default_phase: Phase of single qubit gates.
-            default_sigma: Gaussian sigma of single qubit gates.
-            default_beta: DRAG beta of single qubit gates.
-            caldate: Date of when those parameters are acquired.
-
-       Notes:
-            In this parameter table the DRAG pulse type parameter set is assumed.
+        Returns:
+            Dictionary of parameters.
         """
-        name_map = {
-            'duration': default_duration,
-            'amp': default_amp,
-            'phase': default_phase,
-            'sigma': default_sigma,
-            'beta': default_beta
+        return {'duration': self.duration,
+                'amp': self.amp,
+                'phase': self.phase,
+                'sigma': self.sigma,
+                'beta': self.beta}
+
+
+@dataclass(frozen=True)
+class TwoQubitPulse:
+    channel: str = 'u0'
+    shape: str = 'gaussian_square'
+    duration: int = 800
+    amp: float = 0.05
+    phase: float = 0
+    sigma: float = 128
+    width: float = 544
+    timestamp: pd.Timestamp = pd.Timestamp('2020-01-01 00:00:00')
+
+    def to_dict(self) -> Dict[str, Union[int, float]]:
+        """Return parameters as dictionary.
+
+        Returns:
+            Dictionary of parameters.
+        """
+        return {'duration': self.duration,
+                'amp': self.amp,
+                'phase': self.phase,
+                'sigma': self.sigma,
+                'width': self.width}
+
+
+class FakeTwoQubitParameters(PulseTable):
+    """Mock pulse table database of two qubit system.
+
+    This system consists of x90p, x90m, y90p and cross resonance pulse from qubit0 to 1.
+    This configuration conforms to the typical IBM Quantum backend.
+    """
+    def __init__(self):
+        """Create new mock data base."""
+
+        instructions = {
+            'x90p': {
+                (0, ): SingleQubitPulse(channel='d0', amp=0.04),
+                (1, ): SingleQubitPulse(channel='d1', amp=0.05)
+            },
+            'x90m': {
+                (0, ): SingleQubitPulse(channel='d0', amp=0.04, phase=np.pi),
+                (1, ): SingleQubitPulse(channel='d1', amp=0.05, phase=np.pi)
+            },
+            'y90p': {
+                (0, ): SingleQubitPulse(channel='d0', amp=0.04, phase=np.pi / 2),
+                (1, ): SingleQubitPulse(channel='d1', amp=0.05, phase=np.pi / 2)
+            },
+            'xp': {
+                (0, ): SingleQubitPulse(channel='d0', amp=0.08),
+                (1, ): SingleQubitPulse(channel='d1', amp=0.10)
+            },
+            'cr90p_u': {
+                (0, 1): TwoQubitPulse(channel='u0', amp=0.05),
+                (1, 0): TwoQubitPulse(channel='u1', amp=0.08),
+            },
+            'cr90m_u': {
+                (0, 1): TwoQubitPulse(channel='u0', amp=0.05, phase=np.pi),
+                (1, 0): TwoQubitPulse(channel='u1', amp=0.08, phase=np.pi),
+            },
+            'cr90p_d': {
+                (1, ): TwoQubitPulse(channel='d1', amp=0.02, phase=0.2),
+                (0, ): TwoQubitPulse(channel='d0', amp=0.03, phase=0.2)
+            },
+            'cr90m_d': {
+                (1, ): TwoQubitPulse(channel='d1', amp=0.02, phase=0.2 + np.pi),
+                (0, ): TwoQubitPulse(channel='d0', amp=0.03, phase=0.2 + np.pi)
+            }
         }
 
         fake_table = defaultdict(list)
-        for qind in range(n_qubits):
-            for gate in FakeSingleQubitTable.GATE_TYPES:
-                for pname, default_val in name_map.items():
-                    if pname == 'amp' and gate == 'xp':
-                        value = default_val * 2
-                    else:
-                        value = default_val
-
-                    fake_table['qubits'].append((qind, ))
-                    fake_table['channel'].append('d{qind:d}'.format(qind=qind))
-                    fake_table['inst_name'].append(gate)
+        for inst_name, qubit_table in instructions.items():
+            for qubits, parameter_data in qubit_table.items():
+                for pname, pval in parameter_data.to_dict().items():
+                    fake_table['qubits'].append(tuple(qubits))
+                    fake_table['channel'].append(parameter_data.channel)
+                    fake_table['inst_name'].append(inst_name)
+                    fake_table['stretch_factor'].append(1.0)
+                    fake_table['pulse_type'].append(parameter_data.shape)
                     fake_table['name'].append(pname)
-                    fake_table['value'].append(value)
-                    fake_table['validation'].append('none')
-                    fake_table['timestamp'].append(pd.Timestamp(caldate))
+                    fake_table['value'].append(pval)
+                    fake_table['validation'].append('pass')
+                    fake_table['timestamp'].append(parameter_data.timestamp)
 
         super().__init__(params_collection=pd.DataFrame(data=fake_table))
