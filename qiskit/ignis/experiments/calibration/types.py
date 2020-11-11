@@ -17,6 +17,7 @@ from typing import List, Dict, Any, Union, NewType, NamedTuple
 
 import numpy as np
 import pandas as pd
+from qiskit.pulse import DriveChannel, ControlChannel, MeasureChannel, AcquireChannel
 from qiskit.circuit import QuantumCircuit, Parameter
 
 # All data types that can be accepted as parameter
@@ -73,6 +74,15 @@ class SingleQubitPulses(Enum):
 
 
 class ValidationStatus(Enum):
+    """Valid validation status."""
     PASS = 'pass'
     FAIL = 'fail'
     NONE = 'none'
+
+
+class OpenPulseChannelTypes(Enum):
+    """Pulse channel type and Qiskit channel object mapping."""
+    DRIVE: DriveChannel
+    CONTROL: ControlChannel
+    MEASURE: MeasureChannel
+    ACQUIRE: AcquireChannel
