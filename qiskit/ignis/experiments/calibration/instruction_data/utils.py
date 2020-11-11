@@ -25,6 +25,7 @@ from qiskit.ignis.experiments.calibration.instruction_data.database import (Puls
 
 
 def compose_schedule(
+        qubits: Union[int, Iterable[int]],
         template_sched: pulse.Schedule,
         pulse_table: PulseTable,
         stretch_factor: float,
@@ -34,6 +35,7 @@ def compose_schedule(
     :py:class:`PulseTable`.
 
     Args:
+        qubits: Index of target qubit.
         template_sched: Parametrized schedule template.
         pulse_table: PulseTable where pulse parameters are stored.
         stretch_factor: Stretch factor of the pulse, typically used for error mitigation.
@@ -58,6 +60,7 @@ def compose_schedule(
                 pulse_type = pulse_data.__class__.__name__
             # get parameters from pulse table
             pulse_params = pulse_table.get_instruction_kwargs(
+                qubits=qubits,
                 channel=sched_component.channel.name,
                 inst_name=sched_component.name,
                 pulse_type=pulse_type,
@@ -76,6 +79,7 @@ def compose_schedule(
 
 
 def decompose_schedule(
+        qubits: Union[int, Iterable[int]],
         gate_sched: pulse.Schedule,
         pulse_table: PulseTable,
         parameter_library: Dict[str, circuit.Parameter],
@@ -86,6 +90,7 @@ def decompose_schedule(
     Decoupled parameters are stored in :py:class:`PulseTable`.
 
     Args:
+        qubits: Index of target qubit.
         gate_sched: Schedule that implements specific quantum gate.
         pulse_table: PulseTable where pulse parameters are stored.
         parameter_library: Collection of previously defined parameters.
@@ -125,6 +130,7 @@ def decompose_schedule(
                     continue
 
                 parameter_attributes = {
+                    'qubits': qubits,
                     'channel': sched_component.channel.name,
                     'inst_name': pulse_name,
                     'pulse_type': pulse_type,
@@ -186,6 +192,7 @@ def parse_backend_instmap(
         for qinds, sched in qubit_table.items():
             # create parametrized schedule
             temp_sched = decompose_schedule(
+                qubits=qinds,
                 gate_sched=sched,
                 pulse_table=pulse_table,
                 parameter_library=parameter_library,
