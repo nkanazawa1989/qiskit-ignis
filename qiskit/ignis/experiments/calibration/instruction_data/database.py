@@ -267,13 +267,16 @@ class PulseTable:
             status: New status string. `pass`, `fail`, and `none` can be accepted.
 
         Raises:
-            CalExpError: When invalid status string is specified.
+            CalExpError: When invalid status string or data index is specified.
         """
         try:
             status = types.ValidationStatus(status).value
         except ValueError:
             raise CalExpError('Validation status {status} is not valid string.'
                               ''.format(status=status))
+
+        if data_index > len(self._parameter_collection) - 1:
+            raise CalExpError('Data index {index} does not exist'.format(index=data_index))
 
         self._parameter_collection.at[data_index, 'validation'] = status
 

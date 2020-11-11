@@ -116,13 +116,14 @@ def decompose_schedule(
             if pulse_data.name:
                 pulse_name = pulse_data.name
             else:
-                pulse_name = 'pulse:{pulse_id:d}'.format(pulse_id=pulse_data.id)
+                pulse_name = 'pulse:{pulse_id:d}'.format(pulse_id=hash(pulse_data))
 
             for pname, pval in pulse_data.parameters.items():
                 # check if parameter value is parameter object
                 if isinstance(pval, circuit.ParameterExpression):
                     parameter_kwargs[pname] = pval
                     continue
+
                 parameter_attributes = {
                     'channel': sched_component.channel.name,
                     'inst_name': pulse_name,
