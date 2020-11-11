@@ -93,13 +93,13 @@ class InstructionSet:
     def get_gate_schedule(self,
                           qubits: Union[int, Iterable[int]],
                           name: str,
-                          stretch: float = 1.0) -> pulse.Schedule:
+                          stretch_factor: float = 1.0) -> pulse.Schedule:
         """Get specified schedule from database.
 
         Args:
             qubits: Index of qubits.
             name: Name of gate.
-            stretch: Stretch factor of schedule.
+            stretch_factor: Stretch factor of the pulse, typically used for error mitigation.
 
         Returns:
             Pulse schedule of specified gate.
@@ -110,7 +110,7 @@ class InstructionSet:
             qubits=qubits,
             template_sched=temp_sched,
             pulse_table=self.pulse_table,
-            stretch=stretch,
+            stretch_factor=stretch_factor,
             parametric_shapes=self._parametric_shapes
         )
 
@@ -118,41 +118,42 @@ class InstructionSet:
                           qubits: Union[int, Iterable[int]],
                           name: str,
                           schedule: pulse.Schedule,
-                          stretch: float=1.0):
+                          stretch_factor: float=1.0):
         """Add new schedule to database.
 
         Args:
             qubits: Index of qubits.
             name: Name of gate that the schedule implements.
             schedule: Calibrated schedule to implement the gate.
+            stretch_factor: Stretch factor of the pulse, typically used for error mitigation.
         """
         temp_sched = utils.decompose_schedule(
             qubits=qubits,
             gate_sched=schedule,
             pulse_table=self.pulse_table,
             parameter_library=self._parameter_library,
-            stretch=stretch,
+            stretch_factor=stretch_factor,
             parametric_shapes=self._parametric_shapes
         )
-        self.schedule_template.add_template_schedule(qubits, name, temp_sched)
+        self.schedule_template.set_template_schedule(qubits, name, temp_sched)
 
-    def instruction_schedule_map(self, stretch=1.0) -> pulse.InstructionScheduleMap:
+    def instruction_schedule_map(self, stretch_factor=1.0) -> pulse.InstructionScheduleMap:
         """Create instruction schedule map based on calibrated instruction set.
 
         Args:
-            stretch: Stretch factor of schedule.
+            stretch_factor: Stretch factor of the pulse, typically used for error mitigation.
 
         Returns:
             An instruction schedule map supplied to Qiskit scheduler.
         """
         instmap = pulse.InstructionScheduleMap()
 
-        for _, entry in self.schedule_template.get_dataframe().iterrows():
+        for _, entry in self.schedule_template.filter_data().iterrows():
             composed_sched = utils.compose_schedule(
                 qubits=entry.qubits,
                 template_sched=entry.schedule,
                 pulse_table=self.pulse_table,
-                stretch=stretch,
+                stretch_factor=stretch_factor,
                 parametric_shapes=self._parametric_shapes
             )
             instmap.add(instruction=entry.gate_name,

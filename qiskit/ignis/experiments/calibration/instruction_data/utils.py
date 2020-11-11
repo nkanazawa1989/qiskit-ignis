@@ -28,7 +28,7 @@ def compose_schedule(
         qubits: Union[int, Iterable[int]],
         template_sched: pulse.Schedule,
         pulse_table: PulseTable,
-        stretch: float,
+        stretch_factor: float,
         parametric_shapes: Optional[Enum] = None
         ) -> pulse.Schedule:
     """A helper function to compose an executable schedule by binding parameters from
@@ -38,7 +38,7 @@ def compose_schedule(
         qubits: Index of target qubit.
         template_sched: Parametrized schedule template.
         pulse_table: PulseTable where pulse parameters are stored.
-        stretch: Stretch factor of target schedule.
+        stretch_factor: Stretch factor of the pulse, typically used for error mitigation.
         parametric_shapes: Enum object that maps pulse name and ParametricPulse.
 
     Returns:
@@ -53,7 +53,7 @@ def compose_schedule(
             # bind parameters if parametric pulse entry
             pulse_data = sched_component.pulse
 
-            # get pulse generator type
+            # get pulse shape type
             try:
                 pulse_type = parametric_shapes(pulse_data.__class__).name
                 backend_defined = True
@@ -61,12 +61,12 @@ def compose_schedule(
                 pulse_type = pulse_data.__class__.__name__
                 backend_defined = False
             # get parameters from pulse table
-            pulse_params = pulse_table.get_generator_kwargs(
+            pulse_params = pulse_table.get_instruction_kwargs(
                 qubits=qubits,
                 channel=sched_component.channel.name,
                 inst_name=sched_component.name,
                 pulse_type=pulse_type,
-                stretch=stretch)
+                stretch_factor=stretch_factor)
             binds = {pobj: pulse_params[pobj.name] for pobj in sched_component.parameters}
             sched_component = deepcopy(sched_component).assign_parameters(binds)
             if not backend_defined:
@@ -83,7 +83,7 @@ def decompose_schedule(
         gate_sched: pulse.Schedule,
         pulse_table: PulseTable,
         parameter_library: Dict[str, circuit.Parameter],
-        stretch: float,
+        stretch_factor: float,
         parametric_shapes: Optional[Enum] = None
         ) -> pulse.Schedule:
     """A helper function to decompose a gate schedule into template schedule and parameters.
@@ -94,7 +94,7 @@ def decompose_schedule(
         gate_sched: Schedule that implements specific quantum gate.
         pulse_table: PulseTable where pulse parameters are stored.
         parameter_library: Collection of previously defined parameters.
-        stretch: Stretch factor of target schedule.
+        stretch_factor: Stretch factor of the pulse, typically used for error mitigation.
         parametric_shapes: Enum objet that maps pulse name and ParametricPulse.
 
     Returns:
@@ -111,7 +111,7 @@ def decompose_schedule(
             pulse_data = sched_component.pulse
             parameter_kwargs = {}
 
-            # get pulse generator type
+            # get pulse shape type
             try:
                 pulse_type = parametric_shapes(pulse_data.__class__).name
             except ValueError:
@@ -129,7 +129,7 @@ def decompose_schedule(
                     'channel': sched_component.channel.name,
                     'inst_name': pulse_name,
                     'pulse_type': pulse_type,
-                    'stretch': stretch
+                    'stretch': stretch_factor
                 }
                 # check if parameter is already defined
                 parameter_id = str(hash(tuple(parameter_attributes.values()) + (pname, )))
@@ -143,7 +143,7 @@ def decompose_schedule(
                 else:
                     entries = {pname: pval}
                 for _pname, _pval in entries.items():
-                    pulse_table.set_cal_data(name=_pname, cal_data=_pval, **parameter_attributes)
+                    pulse_table.set_parameter(name=_pname, cal_data=_pval, **parameter_attributes)
 
                 # update pulse parameter and parameter library
                 if pname in ['duration', 'width']:
@@ -190,9 +190,9 @@ def parse_backend_instmap(
                 gate_sched=sched,
                 pulse_table=pulse_table,
                 parameter_library=parameter_library,
-                stretch=1.0,
+                stretch_factor=1.0,
                 parametric_shapes=parametric_shapes
             )
-            sched_template.add_template_schedule(qinds, inst_name, temp_sched)
+            sched_template.set_template_schedule(qinds, inst_name, temp_sched)
 
     return pulse_table, sched_template
