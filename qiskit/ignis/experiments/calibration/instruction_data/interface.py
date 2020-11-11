@@ -107,7 +107,6 @@ class InstructionSet:
         temp_sched = self.schedule_template.get_template_schedule(qubits, name)
 
         return utils.compose_schedule(
-            qubits=qubits,
             template_sched=temp_sched,
             pulse_table=self.pulse_table,
             stretch_factor=stretch_factor,
@@ -128,7 +127,6 @@ class InstructionSet:
             stretch_factor: Stretch factor of the pulse, typically used for error mitigation.
         """
         temp_sched = utils.decompose_schedule(
-            qubits=qubits,
             gate_sched=schedule,
             pulse_table=self.pulse_table,
             parameter_library=self._parameter_library,
@@ -150,7 +148,6 @@ class InstructionSet:
 
         for _, entry in self.schedule_template.filter_data().iterrows():
             composed_sched = utils.compose_schedule(
-                qubits=entry.qubits,
                 template_sched=entry.schedule,
                 pulse_table=self.pulse_table,
                 stretch_factor=stretch_factor,

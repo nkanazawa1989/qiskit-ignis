@@ -25,7 +25,6 @@ from qiskit.ignis.experiments.calibration.instruction_data.database import (Puls
 
 
 def compose_schedule(
-        qubits: Union[int, Iterable[int]],
         template_sched: pulse.Schedule,
         pulse_table: PulseTable,
         stretch_factor: float,
@@ -35,7 +34,6 @@ def compose_schedule(
     :py:class:`PulseTable`.
 
     Args:
-        qubits: Index of target qubit.
         template_sched: Parametrized schedule template.
         pulse_table: PulseTable where pulse parameters are stored.
         stretch_factor: Stretch factor of the pulse, typically used for error mitigation.
@@ -60,13 +58,16 @@ def compose_schedule(
                 pulse_type = pulse_data.__class__.__name__
             # get parameters from pulse table
             pulse_params = pulse_table.get_instruction_kwargs(
-                qubits=qubits,
                 channel=sched_component.channel.name,
                 inst_name=sched_component.name,
                 pulse_type=pulse_type,
                 stretch_factor=stretch_factor)
 
-            binds = {pobj: pulse_params[pobj.name] for pobj in sched_component.parameters}
+            binds = dict()
+            for pobj in sched_component.parameters:
+                # bind parameter values if defined in the pulse table
+                if pobj.name in pulse_params:
+                    binds[pobj] = pulse_params[pobj.name]
             sched_component = deepcopy(sched_component).assign_parameters(binds)
 
         gate_sched.insert(t0, sched_component, inplace=True)
@@ -75,7 +76,6 @@ def compose_schedule(
 
 
 def decompose_schedule(
-        qubits: Union[int, Iterable[int]],
         gate_sched: pulse.Schedule,
         pulse_table: PulseTable,
         parameter_library: Dict[str, circuit.Parameter],
@@ -86,7 +86,6 @@ def decompose_schedule(
     Decoupled parameters are stored in :py:class:`PulseTable`.
 
     Args:
-        qubits: Index of target qubit.
         gate_sched: Schedule that implements specific quantum gate.
         pulse_table: PulseTable where pulse parameters are stored.
         parameter_library: Collection of previously defined parameters.
@@ -120,6 +119,10 @@ def decompose_schedule(
                 pulse_name = 'pulse:{pulse_id:d}'.format(pulse_id=pulse_data.id)
 
             for pname, pval in pulse_data.parameters.items():
+                # check if parameter value is parameter object
+                if isinstance(pval, circuit.ParameterExpression):
+                    parameter_kwargs[pname] = pval
+                    continue
                 parameter_attributes = {
                     'channel': sched_component.channel.name,
                     'inst_name': pulse_name,
@@ -138,10 +141,7 @@ def decompose_schedule(
                 else:
                     entries = {pname: pval}
                 for _pname, _pval in entries.items():
-                    pulse_table.set_parameter(qubits=qubits,
-                                              name=_pname,
-                                              cal_data=_pval,
-                                              **parameter_attributes)
+                    pulse_table.set_parameter(name=_pname, cal_data=_pval, **parameter_attributes)
 
                 # update pulse parameter and parameter library
                 if pname in ['duration', 'width']:
@@ -185,7 +185,6 @@ def parse_backend_instmap(
         for qinds, sched in qubit_table.items():
             # create parametrized schedule
             temp_sched = decompose_schedule(
-                qubits=qinds,
                 gate_sched=sched,
                 pulse_table=pulse_table,
                 parameter_library=parameter_library,

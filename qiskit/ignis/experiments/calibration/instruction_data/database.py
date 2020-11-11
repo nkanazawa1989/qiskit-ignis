@@ -35,7 +35,7 @@ class PulseTable:
     You can search for the specific entry by filtering or you can directly generate
     keyword argument for the target pulse factory.
     """
-    TABLE_COLS = ['qubits', 'channel', 'inst_name', 'stretch_factor', 'pulse_type',
+    TABLE_COLS = ['channel', 'inst_name', 'stretch_factor', 'pulse_type',
                   'name', 'value', 'validation', 'timestamp']
 
     def __init__(self,
@@ -54,7 +54,6 @@ class PulseTable:
 
     def filter_data(
             self,
-            qubits: Optional[Union[int, Iterable[int]]] = None,
             channel: Optional[str] = None,
             inst_name: Optional[str] = None,
             pulse_type: Optional[str] = None,
@@ -65,7 +64,6 @@ class PulseTable:
         """Get raw pandas dataframe of waveform parameters.
 
         Args:
-            qubits: Index of qubit(s) to search for.
             channel: Label of pulse channel to search for. Wildcards can be accepted.
             inst_name: Name of gate to search for. Wildcards can be accepted.
             pulse_type: Name of ParametricPulse shape that is used for pulse creation.
@@ -77,7 +75,6 @@ class PulseTable:
             Pandas dataframe of matched parameters.
         """
         return self._find_data(
-            qubits=qubits,
             channel=channel,
             inst_name=inst_name,
             pulse_type=pulse_type,
@@ -87,7 +84,6 @@ class PulseTable:
 
     def get_instruction_kwargs(
             self,
-            qubits: Union[int, Iterable[int]],
             channel: str,
             inst_name: str,
             pulse_type: str,
@@ -98,7 +94,7 @@ class PulseTable:
     ) -> Dict[str, Union[int, float, complex, circuit.Parameter]]:
         """Get kwargs of calibration parameters to feed into ParametricPulse instruction.
 
-        Qubit index, channel, inst_name, pulse_type should be specified. Wildcards cannot be used.
+        Channel, inst_name, pulse_type should be specified. Wildcards cannot be used.
         This returns only latest calibration data and calibration namespace is removed.
         By default amplitude and phase are converted into complex valued amplitude
         and data entry with bad validation status is not contained in the returned dictionary.
@@ -108,7 +104,6 @@ class PulseTable:
         Qiskit parameter object to parametrize calibration schedule.
 
         Args:
-            qubits: Index of qubit(s) to search for.
             channel: Label of pulse channel to search for.
             inst_name: Name of gate to search for.
             pulse_type: Name of ParametricPulse shape that is used for pulse creation.
@@ -130,7 +125,6 @@ class PulseTable:
             parameters = [parameters]
 
         matched_data = self._find_data(
-            qubits=qubits,
             channel=channel,
             inst_name=inst_name,
             pulse_type=pulse_type,
@@ -169,7 +163,6 @@ class PulseTable:
 
     def get_parameter(
             self,
-            qubits: Optional[Union[int, Iterable[int]]] = None,
             channel: Optional[str] = None,
             inst_name: Optional[str] = None,
             pulse_type: Optional[str] = None,
@@ -183,11 +176,10 @@ class PulseTable:
         Return the parameter value, validation result and timestamp assembled in NamedTuple.
         Each entry is returned as python dictionary with unique parameter name
         created based on calibration namespace.
-        For example, the parameter `amp` associated with qubit 0, channel `d0`
-        and `x90p` gate has the unique name `q0.x90p.amp`.
+        For example, the parameter `amp` associated with channel `d0` and `x90p` gate
+        has the unique name `d0.x90p.amp`.
 
         Args:
-            qubits: Index of qubit(s) to search for.
             channel: Label of pulse channel to search for. Wildcards can be accepted.
             inst_name: Name of gate to search for. Wildcards can be accepted.
             pulse_type: Name of ParametricPulse shape that is used for pulse creation.
@@ -202,7 +194,6 @@ class PulseTable:
             Python dictionary of formatted calibration data.
         """
         matched_data = self._find_data(
-            qubits=qubits,
             channel=channel,
             inst_name=inst_name,
             pulse_type=pulse_type,
@@ -224,7 +215,6 @@ class PulseTable:
 
     def set_parameter(
             self,
-            qubits: Union[int, Iterable[int]],
             channel: str,
             inst_name: str,
             pulse_type: str,
@@ -235,7 +225,6 @@ class PulseTable:
         """Set waveform parameter to the local database.
 
         Args:
-            qubits: Index of qubit(s).
             channel: Label of pulse channel.
             inst_name: Name of gate.
             pulse_type: Name of ParametricPulse shape that is used for pulse creation.
@@ -252,15 +241,10 @@ class PulseTable:
                 validation=types.ValidationStatus.NONE.value,
                 timestamp=pd.Timestamp.now()
             )
-        if isinstance(qubits, int):
-            qubits = (qubits,)
-        else:
-            qubits = tuple(qubits)
 
         # add new data series
         self._parameter_collection = self._parameter_collection.append(
-            {'qubits': qubits,
-             'channel': channel,
+            {'channel': channel,
              'inst_name': inst_name,
              'stretch_factor': stretch_factor,
              'pulse_type': pulse_type,
@@ -295,7 +279,6 @@ class PulseTable:
 
     def _find_data(
             self,
-            qubits: Optional[Union[int, List[int]]] = None,
             channel: Optional[str] = None,
             inst_name: Optional[str] = None,
             pulse_type: Optional[str] = None,
@@ -305,14 +288,6 @@ class PulseTable:
     ) -> pd.DataFrame:
         """A helper function to return matched dataframe."""
         flags = []
-
-        # filter by qubit index
-        if qubits is not None:
-            if isinstance(qubits, int):
-                qubits = (qubits,)
-            else:
-                qubits = tuple(qubits)
-            flags.append(self._parameter_collection['qubits'] == qubits)
 
         # filter by pulse channel
         if channel is not None:
@@ -347,7 +322,7 @@ class PulseTable:
     def _flatten(cls, entries: pd.DataFrame) -> Dict[str, List[types.CalValue]]:
         """A helper function to convert pandas data series into dictionary."""
         # group duplicated entries
-        grouped_params = entries.groupby(['qubits', 'channel', 'inst_name', 'name']).agg({
+        grouped_params = entries.groupby(['channel', 'inst_name', 'name']).agg({
             'value': tuple,
             'validation': tuple,
             'timestamp': tuple
@@ -355,8 +330,7 @@ class PulseTable:
 
         flat_dict = {}
         for keys, series in grouped_params.iterrows():
-            qind_str = 'q' + '_'.join(map(str, keys[0]))
-            pname = '.'.join((qind_str, ) + keys[1:])
+            pname = '.'.join(keys)
             cal_vals = [types.CalValue(val, validation, timestamp) for
                         val, validation, timestamp in
                         zip(series.value, series.validation, series.timestamp)]
