@@ -13,3 +13,4 @@
 """Local relational database for instruction data."""
 
 from qiskit.ignis.experiments.calibration.instruction_data.interface import InstructionSet
+from qiskit.ignis.experiments.calibration.instruction_data.gate_and_schedules_definition import InstructionsDefinition
