@@ -34,7 +34,7 @@ class InstructionsDefinition:
         Returns:
             A QuantumCircuit with parameters in it.
         """
-        return self._instructions[(name, qubits)]
+        return self._instructions.get((name, qubits), None)
 
     def get_instruction(self, name: str, qubits: Iterable,
                         free_parameters: List = None) -> QuantumCircuit:
@@ -112,12 +112,12 @@ class InstructionsDefinition:
 
         return params
 
-    def add_composite_instruction(self, name: str, instructions: List[List[Tuple[str, set]]]):
+    def add_composite_instruction(self, inst_name: str, instructions: List[List[Tuple[str, set]]]):
         """
         Creates a new instruction from the given list of instructions.
 
         Args:
-            name: Name of the composite instruction to add
+            inst_name: Name of the composite instruction to add
             instructions: The instructions to add to the circuit. Instructions are grouped
                 by barriers to enforce relative timing between the instructions. Each instruction
                 is specified by its name and the qubit it applies to.
@@ -127,14 +127,14 @@ class InstructionsDefinition:
             for inst_config in inst_list:
                 all_qubits |= set(inst_config[1])
 
-        circ = QuantumCircuit(max(all_qubits))
+        circ = QuantumCircuit(max(all_qubits)+1)
         for inst_list in instructions:
             for inst_config in inst_list:
                 name = inst_config[0]
                 qubits = inst_config[1]
                 qc = self.get_instruction_template(name, qubits)
-                circ.compose(qc, qubits=qubits)
+                circ.compose(qc, qubits=qubits, inplace=True)
 
             circ.barrier()
 
-        self._instructions[(name, all_qubits)] = circ
+        self._instructions[(inst_name, tuple(all_qubits))] = circ
