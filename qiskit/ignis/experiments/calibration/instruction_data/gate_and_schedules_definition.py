@@ -90,7 +90,7 @@ class InstructionsDefinition:
         circ.append(gate, [0])
         circ.add_calibration(gate, [qubit], schedule)
 
-        self._instructions[(name, (qubit))] = circ
+        self._instructions[(name, (qubit, ))] = circ
 
     def _basic_inst_parameters(self, name: str, channel: PulseChannel,
                                pulse_envelope: ParametricPulse) -> Dict[str, ParameterExpression]:
@@ -132,7 +132,7 @@ class InstructionsDefinition:
             for inst_config in inst_list:
                 name = inst_config[0]
                 qubits = inst_config[1]
-                qc, qubits = self.get_instruction_template(name, qubits)
+                qc = self.get_instruction_template(name, qubits)
                 circ.compose(qc, qubits=qubits)
 
             circ.barrier()
