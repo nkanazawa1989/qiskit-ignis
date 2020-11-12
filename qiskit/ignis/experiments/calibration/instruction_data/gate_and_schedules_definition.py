@@ -1,9 +1,12 @@
-from typing import Dict, Callable, List, Tuple, Iterable
+from typing import Dict, Union, List, Tuple, Iterable
 
 from qiskit import QuantumCircuit
 from qiskit.circuit import ParameterExpression, Gate, Parameter
 from qiskit.pulse import Play, Schedule, ControlChannel, ParametricPulse
 from qiskit.pulse.channels import PulseChannel
+from qiskit.providers.basebackend import BaseBackend
+
+from qiskit.ignis.experiments.calibration.instruction_data.database import PulseTable
 
 
 class InstructionsDefinition:
@@ -15,15 +18,26 @@ class InstructionsDefinition:
     circuits from basic circuits.
     """
 
-    def __init__(self):
+    def __init__(self, backend: BaseBackend):
+        """
+        Args:
+            backend: The backend for which the instructions are defined.
+        """
 
         # Dict to store the instructions we are calibrating
         self._instructions = {}
+
+        # Table to store the calibrated pulse parameters
+        self._pulse_table = PulseTable()
 
     @property
     def instructions(self) -> Dict[Tuple[str, Iterable], QuantumCircuit]:
         """Return the instructions as a dict."""
         return self._instructions
+
+    def get_calibration(self):
+        """Returns the calibrations."""
+        return self._pulse_table.filter_data()
 
     def get_instruction_template(self, name: str, qubits: Iterable) -> QuantumCircuit:
         """
@@ -48,15 +62,56 @@ class InstructionsDefinition:
             free_parameters: Parameters that should be left unbound. If None is specified then
                 all parameters will be bound to their calibrated values.
         """
-        # TODO Get the parameters
+        circ = self.get_instruction_template(name, qubits)
 
         # TODO Get their values
+        binding_dict = {}
+        for param in circ.parameters:
+            binding_dict[param] = self._get_parameter_value(param)
 
-        # TODO return circ with parameters assigned
-        raise NotImplemented
+        return circ.assign_parameters(binding_dict)
+
+    def _get_parameter_value(self, parameter: ParameterExpression) -> Union[float, int, complex]:
+        """
+        Helper method.
+
+        TODO This could be simplified by better integrating with PulseTable
+        """
+        inst_name, channel, name = parameter.name.split('.')
+        qubits = self._get_qubits(channel)
+
+        return list(self._pulse_table.get_parameter(qubits, channel, inst_name, '', 1.0, name).values())[0].value
+
+    def _add_parameter(self, parameter: ParameterExpression, value: Union[float, int, complex]):
+        """
+        Helper method for current implementation.
+
+        TODO This should/could be moved to PulseTable
+
+        Args:
+            parameter: A parameter to add to the DB.
+            value: The value of the parameter to add to the DB.
+        """
+        inst_name, channel, name = parameter.name.split('.')
+        qubits = self._get_qubits(channel)
+
+        # TODO see if this will stay like this
+        pulse_type = ''
+
+        self._pulse_table.set_parameter(qubits, channel, inst_name, pulse_type, 1.0, name, value)
+
+    @staticmethod
+    def _get_qubits(channel_name: str) -> Tuple[int]:
+        """Helper method to get qubits from channel name."""
+        if channel_name[0] in ['d', 'm']:
+            return (int(channel_name[1:]), )
+        else:
+            # TODO Process u_channels
+            raise NotImplemented
 
     def create_basic_instruction(self, name: str, duration: int, pulse_envelope: ParametricPulse,
-                                 channel: PulseChannel, params = None):
+                                 channel: PulseChannel, params = None,
+                                 calibrations: Dict = None):
         """
         Creates a basic instruction in the dictionary.
 
@@ -66,10 +121,18 @@ class InstructionsDefinition:
             pulse_envelope: The callable pulse envelope. Its parameters are given by
                 **params after duration is added to it.
             channel: The channel to which we apply the basic instruction.
+            calibrations: Dictionary with calibrated values for the pulse parameters.
         """
         # Avoids having the user manage the parameters.
         if not params:
             params = self._basic_inst_parameters(name, channel, pulse_envelope)
+
+        if not calibrations:
+            calibrations = {}
+
+        # Add the parameters with their calibrated values to the table
+        for param_name, param in params.items():
+            self._add_parameter(param, calibrations.get(param_name, None))
 
         gate = Gate(name=name, num_qubits=1, params=[_ for _ in params.values()])
 
