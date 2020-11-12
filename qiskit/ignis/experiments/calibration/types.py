@@ -14,7 +14,9 @@
 
 from enum import Enum
 from typing import List, Dict, Any, Union, NewType, NamedTuple
+
 import numpy as np
+import pandas as pd
 from qiskit.circuit import QuantumCircuit, Parameter
 
 # All data types that can be accepted as parameter
@@ -34,7 +36,7 @@ CalValue = NamedTuple(
     'CalValue',
     [('value', Union[int, float, complex]),
      ('validation', str),
-     ('timestamp', np.datetime64)]
+     ('timestamp', pd.Timestamp)]
 )
 CalValue.__doc__ = 'Calibrated value with timestamp and status of validation.'
 CalValue.value.__doc__ = 'Value'
@@ -71,6 +73,7 @@ class SingleQubitPulses(Enum):
 
 
 class ValidationStatus(Enum):
+    """Valid validation status."""
     PASS = 'pass'
     FAIL = 'fail'
     NONE = 'none'

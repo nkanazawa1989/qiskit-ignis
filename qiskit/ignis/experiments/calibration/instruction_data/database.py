@@ -184,7 +184,7 @@ class PulseTable:
         Each entry is returned as python dictionary with unique parameter name
         created based on calibration namespace.
         For example, the parameter `amp` associated with qubit 0, channel `d0`
-        and `x90p` gate has the unique name `q0.x90p.amp`.
+        and `x90p` gate has the unique name `q0.d0.x90p.amp`.
 
         Args:
             qubits: Index of qubit(s) to search for.
@@ -262,7 +262,7 @@ class PulseTable:
             {'qubits': qubits,
              'channel': channel,
              'inst_name': inst_name,
-             'stretch': stretch_factor,
+             'stretch_factor': stretch_factor,
              'pulse_type': pulse_type,
              'name': name,
              'value': cal_data.value,
@@ -283,13 +283,16 @@ class PulseTable:
             status: New status string. `pass`, `fail`, and `none` can be accepted.
 
         Raises:
-            CalExpError: When invalid status string is specified.
+            CalExpError: When invalid status string or data index is specified.
         """
         try:
             status = types.ValidationStatus(status).value
         except ValueError:
             raise CalExpError('Validation status {status} is not valid string.'
                               ''.format(status=status))
+
+        if data_index > len(self._parameter_collection) - 1:
+            raise CalExpError('Data index {index} does not exist'.format(index=data_index))
 
         self._parameter_collection.at[data_index, 'validation'] = status
 
