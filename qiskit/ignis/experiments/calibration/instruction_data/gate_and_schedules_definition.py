@@ -9,7 +9,6 @@ from qiskit.providers.basebackend import BaseBackend
 
 from qiskit.ignis.experiments.calibration.instruction_data.database import PulseTable
 
-
 class InstructionsDefinition:
     """
     Class to track calibrated instructions for the calibration module of Ignis.
@@ -17,6 +16,10 @@ class InstructionsDefinition:
     The class allows users to define single-pulse schedules as quantum circuits and
     then leverage the quantum circuit compose operation to compose more complex
     circuits from basic circuits.
+
+    TODO
+    - parameter binding is global, these needs to be made local
+    - test recursive behavior of instructions
     """
 
     def __init__(self, backend: BaseBackend):
@@ -52,17 +55,20 @@ class InstructionsDefinition:
         Returns:
             A QuantumCircuit with parameters in it.
         """
-        inst = self._instructions.get((name, qubits), None)
+        schedule = self._instructions.get((name, qubits), Schedule())
 
-        gate = Gate(name=name, num_qubits=len(qubits), params=inst.parameters)
+        if not isinstance(schedule, Schedule):
+            schedule = self.get_composite_instruction(schedule)
+
+        gate = Gate(name=name, num_qubits=len(qubits), params=schedule.parameters)
         circ = QuantumCircuit(self._n_qubits)  # Probably a better way of doing this
         circ.append(gate, qubits)
-        circ.add_calibration(gate, qubits, schedule, params=inst.parameters)
+        circ.add_calibration(gate, qubits, schedule, params=schedule.parameters)
 
         return circ
 
     def get_circuit(self, name: str, qubits: Tuple,
-                        free_parameters: List[str] = None) -> QuantumCircuit:
+                    free_parameter_names: List[str] = None) -> QuantumCircuit:
         """
         Returns the QuantumCircuit of the instruction where all parameters aside for those
         explicitly specified are bound to their calibration.
@@ -70,18 +76,22 @@ class InstructionsDefinition:
         Args:
             name: name of the instruction to retrive
             qubits: qubits to which the instruction applies.
-            free_parameters: Names of the parameter that should be left unbound.
+            free_parameter_names: Names of the parameter that should be left unbound.
                 If None is specified then all parameters will be bound to their
                 calibrated values.
         """
         schedule = self._instructions[(name, qubits)]
 
-        if not free_parameters:
-            free_parameters = []
+        if not isinstance(schedule, Schedule):
+            schedule = self.get_composite_instruction(schedule)
+
+        if not free_parameter_names:
+            free_parameter_names = []
 
         binding_dict = {}
         for param in schedule.parameters:
-            if param.name not in free_parameters:
+            print(param.name)
+            if param.name not in free_parameter_names:
                 binding_dict[param] = self._get_parameter_value(param)
 
         schedule = schedule.assign_parameters(binding_dict)
@@ -189,11 +199,23 @@ class InstructionsDefinition:
         return params
 
     def add_composite_instruction(self, inst_name: str, instructions: List[List[Tuple[str, Tuple]]]):
+        """
+        A composite instruction is an instruction that refers to other instructions.
+        It is specified as a list of list where timing barriers are inserted in between
+        lists. All instructions within a sublist are left aligned.
+        """
 
-        all_qubits = set()
+        qubits = set()
         for inst_list in instructions:
             for inst_config in inst_list:
-                all_qubits |= set(inst_config[1])
+                qubits |= set(inst_config[1])
+
+        self._instructions[(inst_name, tuple(qubits))] = instructions
+
+    def get_composite_instruction(self, instructions: List[List[Tuple[str, Tuple]]]) -> Schedule:
+        """
+        Recursive function to obtain a schedule.
+        """
 
         schedule = Schedule()
         for inst_list in instructions:
@@ -201,9 +223,15 @@ class InstructionsDefinition:
                 for inst_config in inst_list:
                     name = inst_config[0]
                     qubits = inst_config[1]
-                    sched = self._instructions[(name, qubits)]
+                    inst = self._instructions[(name, qubits)]
+
+                    if not isinstance(inst, Schedule):
+                        sched = self.get_composite_instruction(inst)
+                    else:
+                        sched = inst
+
                     sub_schedule.append(sched, inplace=True)
 
             schedule.insert(schedule.duration, sub_schedule, inplace=True)
 
-        self._instructions[(inst_name, tuple(all_qubits))] = schedule
+        return schedule
