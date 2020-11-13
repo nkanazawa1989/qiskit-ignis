@@ -1,3 +1,4 @@
+import copy
 from typing import Dict, Union, List, Tuple, Iterable
 
 from qiskit import QuantumCircuit, pulse, schedule
@@ -6,8 +7,8 @@ from qiskit.pulse import (Play, Schedule, ControlChannel, ParametricPulse, Drive
                           MeasureChannel)
 from qiskit.pulse.channels import PulseChannel
 from qiskit.providers.basebackend import BaseBackend
-
 from qiskit.ignis.experiments.calibration.instruction_data.database import PulseTable
+
 
 class InstructionsDefinition:
     """
@@ -46,32 +47,10 @@ class InstructionsDefinition:
         """Returns the calibrations."""
         return self._pulse_table.filter_data()
 
-    def get_circuit_template(self, name: str, qubits: Tuple) -> QuantumCircuit:
-        """
-        Args:
-            name: Name of the instruction to get.
-            qubits: Set of qubits to which the instruction applies.
-
-        Returns:
-            A QuantumCircuit with parameters in it.
-        """
-        schedule = self._instructions.get((name, qubits), Schedule())
-
-        if not isinstance(schedule, Schedule):
-            schedule = self.get_composite_instruction(schedule)
-
-        gate = Gate(name=name, num_qubits=len(qubits), params=schedule.parameters)
-        circ = QuantumCircuit(self._n_qubits)  # Probably a better way of doing this
-        circ.append(gate, qubits)
-        circ.add_calibration(gate, qubits, schedule, params=schedule.parameters)
-
-        return circ
-
     def get_circuit(self, name: str, qubits: Tuple,
                     free_parameter_names: List[str] = None) -> QuantumCircuit:
         """
-        Returns the QuantumCircuit of the instruction where all parameters aside for those
-        explicitly specified are bound to their calibration.
+        Wraps the schedule from the instructions table in a quantum circuit.
 
         Args:
             name: name of the instruction to retrive
@@ -80,21 +59,7 @@ class InstructionsDefinition:
                 If None is specified then all parameters will be bound to their
                 calibrated values.
         """
-        schedule = self._instructions[(name, qubits)]
-
-        if not isinstance(schedule, Schedule):
-            schedule = self.get_composite_instruction(schedule)
-
-        if not free_parameter_names:
-            free_parameter_names = []
-
-        binding_dict = {}
-        for param in schedule.parameters:
-            print(param.name)
-            if param.name not in free_parameter_names:
-                binding_dict[param] = self._get_parameter_value(param)
-
-        schedule = schedule.assign_parameters(binding_dict)
+        schedule = self.get_schedule(name, qubits, free_parameter_names)
 
         gate = Gate(name=name, num_qubits=len(qubits), params=schedule.parameters)
         circ = QuantumCircuit(self._n_qubits)  # Probably a better way of doing this
@@ -102,6 +67,39 @@ class InstructionsDefinition:
         circ.add_calibration(gate, qubits, schedule, params=schedule.parameters)
 
         return circ
+
+    def get_schedule(self, name: str, qubits: Tuple,
+                     free_parameter_names: List[str] = None) -> Schedule:
+        """
+        Retrieves a schedule from the instructions dictionary.
+
+        Args:
+            name: Name of the schedule to retrive.
+            qubits: qubits for which to get the schedule.
+            free_parameter_names: List of parameter names that will be left unassigned.
+                The parameter assignment is done by querying the pulse parameter table.
+
+        Returns:
+            schedule for the given (name, qubits) key.
+        """
+        schedule = self._instructions[(name, qubits)]
+
+        if not isinstance(schedule, Schedule):
+            schedule = self.get_composite_instruction(schedule)
+
+        schedule = copy.deepcopy(schedule)
+
+        if not free_parameter_names:
+            free_parameter_names = []
+
+        binding_dict = {}
+        for param in schedule.parameters:
+            if param.name not in free_parameter_names:
+                binding_dict[param] = self._get_parameter_value(param)
+
+        schedule.assign_parameters(binding_dict)
+
+        return schedule
 
     def _get_parameter_value(self, parameter: ParameterExpression) -> Union[float, int, complex]:
         """
@@ -178,7 +176,8 @@ class InstructionsDefinition:
 
         self._instructions[(name, qubits)] = schedule
 
-    def _basic_inst_parameters(self, name: str, channel: PulseChannel,
+    @staticmethod
+    def _basic_inst_parameters(name: str, channel: PulseChannel,
                                pulse_envelope: ParametricPulse) -> Dict[str, ParameterExpression]:
         """
         This functions avoids the user to have to manage parameters and their name.
@@ -198,11 +197,19 @@ class InstructionsDefinition:
 
         return params
 
-    def add_composite_instruction(self, inst_name: str, instructions: List[List[Tuple[str, Tuple]]]):
+    def add_composite_instruction(self, name: str, instructions: List[List[Tuple[str, Tuple]]]):
         """
         A composite instruction is an instruction that refers to other instructions.
         It is specified as a list of list where timing barriers are inserted in between
         lists. All instructions within a sublist are left aligned.
+
+        Args:
+            name: The name of the composite instruction.
+            instructions: List of sub-lists which contain references to
+                instructions as (name, qubits) keys. Here, name is a string and
+                qubits is a tuple. Each instruction is a schedule. All pulses within
+                 a sub-list are left-aligned and form a sub-schedule. Sub-schedules are
+                 inserted one after the other without any time overlap.
         """
 
         qubits = set()
@@ -210,7 +217,7 @@ class InstructionsDefinition:
             for inst_config in inst_list:
                 qubits |= set(inst_config[1])
 
-        self._instructions[(inst_name, tuple(qubits))] = instructions
+        self._instructions[(name, tuple(qubits))] = instructions
 
     def get_composite_instruction(self, instructions: List[List[Tuple[str, Tuple]]]) -> Schedule:
         """
