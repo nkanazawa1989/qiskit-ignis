@@ -2,7 +2,8 @@ from typing import Dict, Union, List, Tuple, Iterable
 
 from qiskit import QuantumCircuit, pulse, schedule
 from qiskit.circuit import ParameterExpression, Gate, Parameter
-from qiskit.pulse import Play, Schedule, ControlChannel, ParametricPulse
+from qiskit.pulse import (Play, Schedule, ControlChannel, ParametricPulse, DriveChannel,
+                          MeasureChannel)
 from qiskit.pulse.channels import PulseChannel
 from qiskit.providers.basebackend import BaseBackend
 
@@ -34,7 +35,7 @@ class InstructionsDefinition:
         self._backend = backend
 
     @property
-    def instructions(self) -> Dict[Tuple[str, Iterable], Union[Schedule, QuantumCircuit]]:
+    def instructions(self) -> Dict[Tuple[str, Iterable], Schedule]:
         """Return the instructions as a dict."""
         return self._instructions
 
@@ -42,7 +43,7 @@ class InstructionsDefinition:
         """Returns the calibrations."""
         return self._pulse_table.filter_data()
 
-    def get_instruction_template(self, name: str, qubits: Iterable) -> QuantumCircuit:
+    def get_circuit_template(self, name: str, qubits: Tuple) -> QuantumCircuit:
         """
         Args:
             name: Name of the instruction to get.
@@ -51,9 +52,16 @@ class InstructionsDefinition:
         Returns:
             A QuantumCircuit with parameters in it.
         """
-        return self._instructions.get((name, qubits), None)
+        inst = self._instructions.get((name, qubits), None)
 
-    def get_instruction(self, name: str, qubits: Iterable,
+        gate = Gate(name=name, num_qubits=len(qubits), params=inst.parameters)
+        circ = QuantumCircuit(self._n_qubits)  # Probably a better way of doing this
+        circ.append(gate, qubits)
+        circ.add_calibration(gate, qubits, schedule, params=inst.parameters)
+
+        return circ
+
+    def get_circuit(self, name: str, qubits: Tuple,
                         free_parameters: List[str] = None) -> QuantumCircuit:
         """
         Returns the QuantumCircuit of the instruction where all parameters aside for those
@@ -66,17 +74,24 @@ class InstructionsDefinition:
                 If None is specified then all parameters will be bound to their
                 calibrated values.
         """
-        qc = self.get_instruction_template(name, qubits)
+        schedule = self._instructions[(name, qubits)]
 
         if not free_parameters:
             free_parameters = []
 
         binding_dict = {}
-        for param in qc.parameters:
+        for param in schedule.parameters:
             if param.name not in free_parameters:
                 binding_dict[param] = self._get_parameter_value(param)
 
-        return qc.assign_parameters(binding_dict)
+        schedule = schedule.assign_parameters(binding_dict)
+
+        gate = Gate(name=name, num_qubits=len(qubits), params=schedule.parameters)
+        circ = QuantumCircuit(self._n_qubits)  # Probably a better way of doing this
+        circ.append(gate, qubits)
+        circ.add_calibration(gate, qubits, schedule, params=schedule.parameters)
+
+        return circ
 
     def _get_parameter_value(self, parameter: ParameterExpression) -> Union[float, int, complex]:
         """
@@ -151,12 +166,7 @@ class InstructionsDefinition:
         # Identify the qubits concerned by this operation.
         qubits = self._get_qubits(channel.name)
 
-        gate = Gate(name=name, num_qubits=len(qubits), params=[_ for _ in params.values()])
-        circ = QuantumCircuit(self._n_qubits)  # Probably a better way of doing this
-        circ.append(gate, qubits)
-        circ.add_calibration(gate, qubits, schedule)
-
-        self._instructions[(name, qubits)] = circ
+        self._instructions[(name, qubits)] = schedule
 
     def _basic_inst_parameters(self, name: str, channel: PulseChannel,
                                pulse_envelope: ParametricPulse) -> Dict[str, ParameterExpression]:
@@ -178,29 +188,22 @@ class InstructionsDefinition:
 
         return params
 
-    def add_composite_instruction(self, inst_name: str, instructions: List[List[Tuple[str, set]]]):
-        """
-        Creates a new instruction from the given list of instructions.
+    def add_composite_instruction(self, inst_name: str, instructions: List[List[Tuple[str, Tuple]]]):
 
-        Args:
-            inst_name: Name of the composite instruction to add
-            instructions: The instructions to add to the circuit. Instructions are grouped
-                by barriers to enforce relative timing between the instructions. Each instruction
-                is specified by its name and the qubit it applies to.
-        """
         all_qubits = set()
         for inst_list in instructions:
             for inst_config in inst_list:
                 all_qubits |= set(inst_config[1])
 
-        circ = QuantumCircuit(self._n_qubits)
+        schedule = Schedule()
         for inst_list in instructions:
-            for inst_config in inst_list:
-                name = inst_config[0]
-                qubits = inst_config[1]
-                qc = self.get_instruction_template(name, qubits)
-                circ.compose(qc, inplace=True)
+            with pulse.build() as sub_schedule:
+                for inst_config in inst_list:
+                    name = inst_config[0]
+                    qubits = inst_config[1]
+                    sched = self._instructions[(name, qubits)]
+                    sub_schedule.append(sched, inplace=True)
 
-            circ.barrier()
+            schedule.insert(schedule.duration, sub_schedule, inplace=True)
 
-        self._instructions[(inst_name, tuple(all_qubits))] = circ
+        self._instructions[(inst_name, tuple(all_qubits))] = schedule
