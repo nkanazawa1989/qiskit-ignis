@@ -1,6 +1,6 @@
 from typing import Dict, Union, List, Tuple, Iterable
 
-from qiskit import QuantumCircuit
+from qiskit import QuantumCircuit, pulse, schedule
 from qiskit.circuit import ParameterExpression, Gate, Parameter
 from qiskit.pulse import Play, Schedule, ControlChannel, ParametricPulse
 from qiskit.pulse.channels import PulseChannel
@@ -29,9 +29,12 @@ class InstructionsDefinition:
 
         # Table to store the calibrated pulse parameters
         self._pulse_table = PulseTable()
+        self._n_qubits = backend.configuration().n_qubits
+        self._channel_map = backend.configuration().qubit_channel_mapping
+        self._backend = backend
 
     @property
-    def instructions(self) -> Dict[Tuple[str, Iterable], QuantumCircuit]:
+    def instructions(self) -> Dict[Tuple[str, Iterable], Union[Schedule, QuantumCircuit]]:
         """Return the instructions as a dict."""
         return self._instructions
 
@@ -51,7 +54,7 @@ class InstructionsDefinition:
         return self._instructions.get((name, qubits), None)
 
     def get_instruction(self, name: str, qubits: Iterable,
-                        free_parameters: List = None) -> QuantumCircuit:
+                        free_parameters: List[str] = None) -> QuantumCircuit:
         """
         Returns the QuantumCircuit of the instruction where all parameters aside for those
         explicitly specified are bound to their calibration.
@@ -59,17 +62,21 @@ class InstructionsDefinition:
         Args:
             name: name of the instruction to retrive
             qubits: qubits to which the instruction applies.
-            free_parameters: Parameters that should be left unbound. If None is specified then
-                all parameters will be bound to their calibrated values.
+            free_parameters: Names of the parameter that should be left unbound.
+                If None is specified then all parameters will be bound to their
+                calibrated values.
         """
-        circ = self.get_instruction_template(name, qubits)
+        qc = self.get_instruction_template(name, qubits)
 
-        # TODO Get their values
+        if not free_parameters:
+            free_parameters = []
+
         binding_dict = {}
-        for param in circ.parameters:
-            binding_dict[param] = self._get_parameter_value(param)
+        for param in qc.parameters:
+            if param.name not in free_parameters:
+                binding_dict[param] = self._get_parameter_value(param)
 
-        return circ.assign_parameters(binding_dict)
+        return qc.assign_parameters(binding_dict)
 
     def _get_parameter_value(self, parameter: ParameterExpression) -> Union[float, int, complex]:
         """
@@ -100,18 +107,20 @@ class InstructionsDefinition:
 
         self._pulse_table.set_parameter(qubits, channel, inst_name, pulse_type, 1.0, name, value)
 
-    @staticmethod
-    def _get_qubits(channel_name: str) -> Tuple[int]:
+    def _get_qubits(self, channel_name: str) -> Tuple[int]:
         """Helper method to get qubits from channel name."""
         if channel_name[0] in ['d', 'm']:
             return (int(channel_name[1:]), )
         else:
-            # TODO Process u_channels
-            raise NotImplemented
+            qubits = []
+            for qubit_idx, channels in enumerate(self._channel_map):
+                if channel_name in channels:
+                    qubits.append(qubit_idx)
+
+            return tuple(qubits)
 
     def create_basic_instruction(self, name: str, duration: int, pulse_envelope: ParametricPulse,
-                                 channel: PulseChannel, params = None,
-                                 calibrations: Dict = None):
+                                 channel: PulseChannel, calibrations: Dict = None):
         """
         Creates a basic instruction in the dictionary.
 
@@ -124,8 +133,7 @@ class InstructionsDefinition:
             calibrations: Dictionary with calibrated values for the pulse parameters.
         """
         # Avoids having the user manage the parameters.
-        if not params:
-            params = self._basic_inst_parameters(name, channel, pulse_envelope)
+        params = self._basic_inst_parameters(name, channel, pulse_envelope)
 
         if not calibrations:
             calibrations = {}
@@ -134,26 +142,21 @@ class InstructionsDefinition:
         for param_name, param in params.items():
             self._add_parameter(param, calibrations.get(param_name, None))
 
-        gate = Gate(name=name, num_qubits=1, params=[_ for _ in params.values()])
-
         if duration:
             params['duration'] = duration
 
         schedule = Schedule(name=name)
         schedule = schedule.insert(0, Play(pulse_envelope(**params), channel))
 
-        if isinstance(channel, ControlChannel):
-            # TODO Need a mapping from ControlChannel to qubits
-            # TODO This works for CR, would it work for TC?
-            raise NotImplemented
-        else:
-            qubit = int(channel.name.replace('d', '').replace('m', ''))
+        # Identify the qubits concerned by this operation.
+        qubits = self._get_qubits(channel.name)
 
-        circ = QuantumCircuit(1)
-        circ.append(gate, [0])
-        circ.add_calibration(gate, [qubit], schedule)
+        gate = Gate(name=name, num_qubits=len(qubits), params=[_ for _ in params.values()])
+        circ = QuantumCircuit(self._n_qubits)  # Probably a better way of doing this
+        circ.append(gate, qubits)
+        circ.add_calibration(gate, qubits, schedule)
 
-        self._instructions[(name, (qubit, ))] = circ
+        self._instructions[(name, qubits)] = circ
 
     def _basic_inst_parameters(self, name: str, channel: PulseChannel,
                                pulse_envelope: ParametricPulse) -> Dict[str, ParameterExpression]:
@@ -190,13 +193,13 @@ class InstructionsDefinition:
             for inst_config in inst_list:
                 all_qubits |= set(inst_config[1])
 
-        circ = QuantumCircuit(max(all_qubits)+1)
+        circ = QuantumCircuit(self._n_qubits)
         for inst_list in instructions:
             for inst_config in inst_list:
                 name = inst_config[0]
                 qubits = inst_config[1]
                 qc = self.get_instruction_template(name, qubits)
-                circ.compose(qc, qubits=qubits, inplace=True)
+                circ.compose(qc, inplace=True)
 
             circ.barrier()
 
