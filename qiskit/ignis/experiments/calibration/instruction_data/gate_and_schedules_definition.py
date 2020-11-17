@@ -1,5 +1,5 @@
 import copy
-from typing import Dict, Union, List, Tuple, Iterable
+from typing import Dict, Union, List, Tuple, Iterable, Optional
 
 from qiskit import QuantumCircuit, pulse, schedule
 from qiskit.circuit import ParameterExpression, Gate, Parameter
@@ -8,6 +8,7 @@ from qiskit.pulse import (Play, Schedule, ControlChannel, ParametricPulse, Drive
 from qiskit.pulse.channels import PulseChannel
 from qiskit.providers.basebackend import BaseBackend
 from qiskit.ignis.experiments.calibration.instruction_data.database import PulseTable
+from qiskit.ignis.experiments.calibration.instruction_data.utils import parse_backend_instmap
 
 
 class InstructionsDefinition:
@@ -18,12 +19,12 @@ class InstructionsDefinition:
     then leverage the quantum circuit compose operation to compose more complex
     circuits from basic circuits.
 
-    TODO
-    - parameter binding is global, these needs to be made local
+    # TODO
     - test recursive behavior of instructions
     """
 
-    def __init__(self, backend: BaseBackend):
+    def __init__(self, backend_name: str, n_qubits: int, channel_qubit_map: Dict,
+                 pulse_table: Optional[PulseTable] = None):
         """
         Args:
             backend: The backend for which the instructions are defined.
@@ -33,10 +34,42 @@ class InstructionsDefinition:
         self._instructions = {}
 
         # Table to store the calibrated pulse parameters
-        self._pulse_table = PulseTable()
-        self._n_qubits = backend.configuration().n_qubits
-        self._channel_map = backend.configuration().qubit_channel_mapping
-        self._backend = backend
+        self.backend_name = backend_name
+
+        if pulse_table:
+            self._pulse_table = pulse_table
+        else:
+            self._pulse_table = PulseTable()
+
+        self._n_qubits = n_qubits
+        self._channel_map = channel_qubit_map
+
+    @classmethod
+    def from_backend(cls, backend: BaseBackend) -> 'InstructionsDefinition':
+        """A factory method that creates InstructionSet from BaseBackend.
+
+        Args:
+            backend: base backend or other pulse backends that conform to OpenPulse spec.
+
+        Returns:
+            New InstructionSet instance.
+        """
+        parameter_library = dict()
+        channel_qubit_map = dict()
+
+        for chname, ch_properties in backend.configuration().channels.items():
+            channel_qubit_map[chname] = tuple(ch_properties['operates']['qubits'])
+
+        pulse_table, sched_template = parse_backend_instmap(
+            channel_qubit_map=channel_qubit_map,
+            instmap=backend.defaults(refresh=True).instruction_schedule_map,
+            parameter_library=parameter_library)
+
+        return InstructionsDefinition(
+            backend_name=backend.name(),
+            n_qubits=backend.configuration().n_qubits,
+            channel_qubit_map=channel_qubit_map,
+            pulse_table=pulse_table)
 
     @property
     def instructions(self) -> Dict[Tuple[str, Iterable], Schedule]:
@@ -107,12 +140,13 @@ class InstructionsDefinition:
 
         TODO This could be simplified by better integrating with PulseTable
         """
-        inst_name, channel, name = parameter.name.split('.')
-        qubits = self._get_qubits(channel)
+        inst_name, ch, pulse_type, name = parameter.name.split('.')
+        qubits = self._channel_map[ch]
 
-        return list(self._pulse_table.get_parameter(qubits, channel, inst_name, '', 1.0, name).values())[0].value
+        return list(self._pulse_table.get_parameter(qubits, ch, inst_name, pulse_type, 1.0, name).values())[0].value
 
-    def _add_parameter(self, parameter: ParameterExpression, value: Union[float, int, complex]):
+    def _add_parameter(self, parameter: ParameterExpression, value: Union[float, int, complex],
+                       stretch_factor: Optional[float] = 1.0):
         """
         Helper method for current implementation.
 
@@ -121,26 +155,12 @@ class InstructionsDefinition:
         Args:
             parameter: A parameter to add to the DB.
             value: The value of the parameter to add to the DB.
+            stretch_factor: The stretch factor of the gate.
         """
-        inst_name, channel, name = parameter.name.split('.')
-        qubits = self._get_qubits(channel)
+        inst_name, ch, pulse_type, name = parameter.name.split('.')
+        qubits = self._channel_map[ch]
 
-        # TODO see if this will stay like this
-        pulse_type = ''
-
-        self._pulse_table.set_parameter(qubits, channel, inst_name, pulse_type, 1.0, name, value)
-
-    def _get_qubits(self, channel_name: str) -> Tuple[int]:
-        """Helper method to get qubits from channel name."""
-        if channel_name[0] in ['d', 'm']:
-            return (int(channel_name[1:]), )
-        else:
-            qubits = []
-            for qubit_idx, channels in enumerate(self._channel_map):
-                if channel_name in channels:
-                    qubits.append(qubit_idx)
-
-            return tuple(qubits)
+        self._pulse_table.set_parameter(qubits, ch, inst_name, pulse_type, stretch_factor, name, value)
 
     def create_basic_instruction(self, name: str, duration: int, pulse_envelope: ParametricPulse,
                                  channel: PulseChannel, calibrations: Dict = None):
@@ -172,7 +192,7 @@ class InstructionsDefinition:
         schedule = schedule.insert(0, Play(pulse_envelope(**params), channel))
 
         # Identify the qubits concerned by this operation.
-        qubits = self._get_qubits(channel.name)
+        qubits = self._channel_map[channel.name]
 
         self._instructions[(name, qubits)] = schedule
 
@@ -184,16 +204,17 @@ class InstructionsDefinition:
 
         TODO Is there a better way of doing this?
         """
+        pulse_name = pulse_envelope.__name__.lower()
         params = {}
         if pulse_envelope.__name__ in ['Drag', 'Gaussian', 'GaussianSquare']:
-            params['amp'] = Parameter(name + '.' + channel.name + '.amp')
-            params['sigma'] = Parameter(name + '.' + channel.name + '.sigma')
+            params['amp'] = Parameter(name + '.' + channel.name + '.' + pulse_name + '.amp')
+            params['sigma'] = Parameter(name + '.' + channel.name + '.' + pulse_name + '.sigma')
 
         if pulse_envelope.__name__ == 'Drag':
-            params['beta'] = Parameter(name + '.' + channel.name + '.beta')
+            params['beta'] = Parameter(name + '.' + channel.name + '.' + pulse_name + '.beta')
 
         if pulse_envelope.__name__ == 'GaussianSquare':
-            params['width'] = Parameter(name + '.' + channel.name + '.width')
+            params['width'] = Parameter(name + '.' + channel.name + '.' + pulse_name + '.width')
 
         return params
 
