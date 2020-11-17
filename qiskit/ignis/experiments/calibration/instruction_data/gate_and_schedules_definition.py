@@ -1,10 +1,11 @@
 import copy
+import numpy as np
 from typing import Dict, Union, List, Tuple, Iterable, Optional
 
 from qiskit import QuantumCircuit, pulse, schedule
 from qiskit.circuit import ParameterExpression, Gate, Parameter
 from qiskit.pulse import (Play, Schedule, ControlChannel, ParametricPulse, DriveChannel,
-                          MeasureChannel)
+                          MeasureChannel, ShiftPhase)
 from qiskit.pulse.channels import PulseChannel
 from qiskit.providers.basebackend import BaseBackend
 from qiskit.ignis.experiments.calibration.instruction_data.database import PulseTable
@@ -166,6 +167,27 @@ class InstructionsDefinition:
         qubits = self._channel_map[ch]
 
         self._pulse_table.set_parameter(qubits, ch, inst_name, pulse_type, stretch_factor, name, value)
+
+    def create_z_instruction(self, qubit: int):
+        """
+        Create a frame change instruction, i.e. a virtual Z gate.
+        This instruction will apply phase changes to all channels which involve qubit.
+        """
+        phase = Parameter('z.d%i' % qubit + '..phase')
+        schedule = Schedule(name='z')
+        channels = set()
+        for ch, qubits in self._channel_map.items():
+            if qubit in qubits:
+                if ch not in channels:
+                    channels.add(ch)
+                    if ch[0] == 'd':
+                        schedule.insert(0, ShiftPhase(phase, DriveChannel(int(ch[1:]))), inplace=True)
+                    if ch[0] == 'u':
+                        schedule.insert(0, ShiftPhase(phase, ControlChannel(int(ch[1:]))), inplace=True)
+
+        self._pulse_table.set_parameter((qubit, ), 'd%i'%qubit, 'z', '', 1.0, 'phase', np.pi)
+
+        self._instructions[('z', (qubit,))] = schedule
 
     def create_basic_instruction(self, name: str, duration: int, pulse_envelope: ParametricPulse,
                                  channel: PulseChannel, calibrations: Dict = None):
