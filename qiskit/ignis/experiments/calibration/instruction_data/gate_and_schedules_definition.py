@@ -118,7 +118,7 @@ class InstructionsDefinition:
         schedule = self._instructions[(name, qubits)]
 
         if not isinstance(schedule, Schedule):
-            schedule = self.get_composite_instruction(schedule)
+            schedule = self._get_composite_instruction(schedule)
 
         schedule = copy.deepcopy(schedule)
 
@@ -240,7 +240,7 @@ class InstructionsDefinition:
 
         self._instructions[(name, tuple(qubits))] = instructions
 
-    def get_composite_instruction(self, instructions: List[List[Tuple[str, Tuple]]]) -> Schedule:
+    def _get_composite_instruction(self, instructions: List[List[Tuple[str, Tuple]]]) -> Schedule:
         """
         Recursive function to obtain a schedule.
         """
@@ -254,7 +254,7 @@ class InstructionsDefinition:
                     inst = self._instructions[(name, qubits)]
 
                     if not isinstance(inst, Schedule):
-                        sched = self.get_composite_instruction(inst)
+                        sched = self._get_composite_instruction(inst)
                     else:
                         sched = inst
 
