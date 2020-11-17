@@ -76,6 +76,11 @@ class InstructionsDefinition:
         """Return the instructions as a dict."""
         return self._instructions
 
+    @property
+    def pulse_parameter_table(self) -> PulseTable:
+        """Returns the table of pulse parameters."""
+        return self._pulse_table
+
     def get_calibration(self):
         """Returns the calibrations."""
         return self._pulse_table.filter_data()
