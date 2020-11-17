@@ -69,7 +69,7 @@ class InstructionsDefinition:
         return circ
 
     def get_schedule(self, name: str, qubits: Tuple,
-                     free_parameter_names: List[str] = None) -> Schedule:
+                     free_parameter_names: Optional[List[str]] = None) -> Schedule:
         """
         Retrieves a schedule from the instructions dictionary.
 
