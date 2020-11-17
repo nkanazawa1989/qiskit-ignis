@@ -168,10 +168,15 @@ class InstructionsDefinition:
 
         self._pulse_table.set_parameter(qubits, ch, inst_name, pulse_type, stretch_factor, name, value)
 
-    def create_z_instruction(self, qubit: int):
+    def create_z_instruction(self, qubit: int, shift_u_channels: Optional[bool] = False):
         """
         Create a frame change instruction, i.e. a virtual Z gate.
         This instruction will apply phase changes to all channels which involve qubit.
+
+        Args:
+            qubit: The qubit upon which the Z instruction will work
+            shift_u_channels: If true the Z instruction will act on the u-channels associated
+                to the qubit.
         """
         phase = Parameter('z.d%i' % qubit + '..phase')
         schedule = Schedule(name='z')
@@ -182,7 +187,7 @@ class InstructionsDefinition:
                     channels.add(ch)
                     if ch[0] == 'd':
                         schedule.insert(0, ShiftPhase(phase, DriveChannel(int(ch[1:]))), inplace=True)
-                    if ch[0] == 'u':
+                    if ch[0] == 'u' and shift_u_channels:
                         schedule.insert(0, ShiftPhase(phase, ControlChannel(int(ch[1:]))), inplace=True)
 
         self._pulse_table.set_parameter((qubit, ), 'd%i'%qubit, 'z', '', 1.0, 'phase', np.pi)
