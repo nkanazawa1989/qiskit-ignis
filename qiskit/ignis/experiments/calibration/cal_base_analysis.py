@@ -24,6 +24,7 @@ from scipy import optimize
 from qiskit.ignis.experiments.base import Analysis
 from qiskit.ignis.experiments.calibration.cal_metadata import CalibrationMetadata
 from qiskit.ignis.experiments.calibration.data_processing import DataProcessingSteps
+from qiskit.ignis.experiments.calibration.exceptions import CalExpError
 
 
 class BaseCalibrationAnalysis(Analysis):
@@ -303,7 +304,7 @@ class BaseCalibrationAnalysis(Analysis):
             Set of xvalue and yvalue vectors with string representation of the data.
         """
         if len(self.x_values) > 1:
-            pass
+            raise CalExpError('Default method does not support multi dimensional scan.')
 
         grouped_data = data.groupby(['series', 'experiment']).agg({
             self.x_values[0]: list, 'value': list})
