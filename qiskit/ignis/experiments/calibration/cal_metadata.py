@@ -32,6 +32,8 @@ class CalibrationMetadata:
     qubits: List[int] = None
 
     # Mapping of qubit index and classical register index.
+    # The key is the qubit index and value is the classical bit index.
+    # This mapping is automatically generated at BaseCalibrationExperiment class.
     register_map: Dict[int, int] = None
 
     def to_dict(self) -> dict:

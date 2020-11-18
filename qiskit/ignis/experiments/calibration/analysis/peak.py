@@ -41,4 +41,4 @@ class GaussianFit(BaseCalibrationAnalysis):
                      xvals: np.ndarray,
                      yvals: np.ndarray) -> List[Tuple[float, float]]:
 
-        return [(-np.inf, np.inf), (xvals[0], xvals[-1]), (0, np.inf), (-np.inf, np.inf)]
+        return [(-np.inf, np.inf), (-np.inf, np.inf), (0, np.inf), (-np.inf, np.inf)]

@@ -12,19 +12,17 @@
 
 """Base class of calibration analysis."""
 
-from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, Optional, Any, Iterator, List, Tuple, Union
 
 import numpy as np
 import pandas as pd
-from qiskit.result import Result, Counts
-from scipy import optimize
-
 from qiskit.ignis.experiments.base import Analysis
 from qiskit.ignis.experiments.calibration.cal_metadata import CalibrationMetadata
 from qiskit.ignis.experiments.calibration.data_processing import DataProcessingSteps
 from qiskit.ignis.experiments.calibration.exceptions import CalExpError
+from qiskit.result import Result, Counts
+from scipy import optimize
 
 
 class BaseCalibrationAnalysis(Analysis):
@@ -274,7 +272,7 @@ class BaseCalibrationAnalysis(Analysis):
     def _format_data(self,
                      data: Result,
                      metadata: Dict[str, any],
-                     index: int) -> Counts:
+                     index: int) -> np.ndarray:
         """Format the required data from a Result.data dict"""
         metadata = CalibrationMetadata(**metadata)
 

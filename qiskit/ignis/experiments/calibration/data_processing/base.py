@@ -9,13 +9,17 @@
 # Any modifications or derivative works of this code must retain this
 # copyright notice, and modified files need to carry a notice indicating
 # that they have been altered from the originals.
-"""
+"""Definition of sub routine of data processing.
 
+AnalysisStep represents a node of the data analysis tree that specifies what
+operations are performed on the data such as taking the real part of complex data
+or scaling the data. This data processing chain is represented as a tree,
+and this will also provide correct execution options that are consistent with data processing.
 """
 
 from abc import ABCMeta, abstractmethod
 from enum import Enum
-from typing import Any, Dict
+from typing import Any
 
 from qiskit.ignis.experiments.calibration.cal_metadata import CalibrationMetadata
 from qiskit.ignis.experiments.calibration.exceptions import CalExpError
