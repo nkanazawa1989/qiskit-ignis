@@ -104,8 +104,7 @@ class BaseCalibrationAnalysis(Analysis):
 
         return experiment_results
 
-    @classmethod
-    def initial_guess(cls,
+    def initial_guess(self,
                       xvals: np.ndarray,
                       yvals: np.ndarray) -> Iterator[np.ndarray]:
         """Create initial guess for fit parameters.
@@ -124,10 +123,9 @@ class BaseCalibrationAnalysis(Analysis):
         """
         raise NotImplementedError
 
-    @classmethod
-    def fit_boundary(cls,
+    def fit_boundary(self,
                      xvals: np.ndarray,
-                     yvals: np.ndarray) -> Tuple[List[float], List[float]]:
+                     yvals: np.ndarray) -> List[Tuple[float, float]]:
         """Returns boundary of parameters to fit.
 
         Args:
@@ -136,8 +134,7 @@ class BaseCalibrationAnalysis(Analysis):
         """
         raise NotImplementedError
 
-    @classmethod
-    def fit_function(cls, xvals: np.ndarray, *args) -> np.ndarray:
+    def fit_function(self, xvals: np.ndarray, *args) -> np.ndarray:
         """Fit function.
 
         Args:
@@ -145,8 +142,7 @@ class BaseCalibrationAnalysis(Analysis):
         """
         raise NotImplementedError
 
-    @classmethod
-    def chi_squared(cls,
+    def chi_squared(self,
                     parameters: np.ndarray,
                     xvals: np.ndarray,
                     yvals: np.ndarray):
@@ -157,16 +153,12 @@ class BaseCalibrationAnalysis(Analysis):
             xvals: X values to fit.
             yvals: Y values to fit.
         """
-        fit_yvals = cls.fit_function(xvals=xvals, *parameters)
+        fit_yvals = self.fit_function(xvals, *parameters)
 
         chi_sq = np.sum((fit_yvals - yvals) ** 2)
         dof = len(xvals) - len(parameters)
 
         return chi_sq / dof
-
-    def new_calibration_parameter(self, **kwargs) -> float:
-        """Calculate new calibration parameter value from analysis result."""
-        raise NotImplementedError
 
     def plot(self,
              qubits: Optional[Union[int, List[int]]] = None,
@@ -201,7 +193,7 @@ class BaseCalibrationAnalysis(Analysis):
             if qubits and analyzed_qubit not in qubits:
                 # this qubit is not specified.
                 continue
-            for data_tag, fit_result in series_data:
+            for data_tag, fit_result in series_data.items():
                 if tags and data_tag not in tags:
                     # this tag is not specified.
                     continue
@@ -211,7 +203,8 @@ class BaseCalibrationAnalysis(Analysis):
                 yval_fit = self.fit_function(xval_interp, *fit_result.fitvals)
 
                 fit_line_color = cm.tab20.colors[(2*line_counts+1) % cm.tab20.N]
-                ax.plot(xval_interp, yval_fit, '--', color=fit_line_color)
+                data_label = '{tag} (Q{qubit:d})'.format(tag=data_tag, qubit=analyzed_qubit)
+                ax.plot(xval_interp, yval_fit, '--', color=fit_line_color, label=data_label)
 
                 # plot data scatter
                 data_scatter_color = cm.tab20.colors[(2*line_counts) % cm.tab20.N]
@@ -221,6 +214,8 @@ class BaseCalibrationAnalysis(Analysis):
 
         ax.set_xlabel(kwargs.get('xlabel', kwargs.get('xlabel', 'Parameter')), fontsize=14)
         ax.set_ylabel(kwargs.get('ylabel', kwargs.get('ylabel', 'Signal')), fontsize=14)
+        ax.grid()
+        ax.legend()
 
         if matplotlib.get_backend() in ['module://ipykernel.pylab.backend_inline',
                                         'nbAgg']:
@@ -237,8 +232,8 @@ class BaseCalibrationAnalysis(Analysis):
         Returns:
             any: the output of the analysis,
         """
-        qubit_data = self.experiment_data().groupby('qubits').get_group(qubit)
-        temp_results = defaultdict(lambda: defaultdict(FitResult))
+        qubit_data = self.experiment_data().groupby('qubit').get_group(qubit)
+        temp_results = dict()
 
         # fit for each initial guess
         for xvals, yvals, tag in self._get_target_data(qubit_data):
@@ -254,7 +249,7 @@ class BaseCalibrationAnalysis(Analysis):
                     **kwargs
                 )
                 if fit_result.success:
-                    if best_result and best_result.chisq > fit_result.fun:
+                    if not best_result or best_result.chisq > fit_result.fun:
                         best_result = FitResult(
                             fitvals=fit_result.x,
                             chisq=fit_result.fun,
@@ -265,13 +260,13 @@ class BaseCalibrationAnalysis(Analysis):
                     # fit failed, output log `fit_result.message`
                     pass
             # keep the best result
-            temp_results[qubit][tag] = best_result
+            temp_results[tag] = best_result
 
-        # update class result
+        # update analysis result
         if self._result:
-            self._result.update(temp_results)
+            self._result[qubit] = temp_results
         else:
-            self._result = temp_results
+            self._result = {qubit: temp_results}
 
         return temp_results
 
@@ -348,3 +343,6 @@ class FitResult:
             'xvals': list(self.xvals),
             'yvals': list(self.yvals)
         }
+
+    def __repr__(self) -> str:
+        return 'FitResult({})'.format(','.join(map(str, self.fitvals)))

@@ -15,7 +15,7 @@ import numpy as np
 from scipy import signal
 from typing import Iterator, Tuple, List
 
-from qiskit.ignis.experiments.calibration.analysis.cal_1d_analysis import Calibration1DAnalysis
+from qiskit.ignis.experiments.calibration.cal_base_analysis import BaseCalibrationAnalysis
 
 
 def _freq_guess(xvals: np.ndarray, yvals: np.ndarray):
@@ -37,11 +37,10 @@ def _freq_guess(xvals: np.ndarray, yvals: np.ndarray):
     return f0_guess
 
 
-class CosinusoidalFit(Calibration1DAnalysis):
+class CosinusoidalFit(BaseCalibrationAnalysis):
     r"""Fit with $F(x) = a \cos(2\pi f x + \phi) + b$."""
 
-    @classmethod
-    def initial_guess(cls,
+    def initial_guess(self,
                       xvals: np.ndarray,
                       yvals: np.ndarray) -> Iterator[np.ndarray]:
 
@@ -52,12 +51,11 @@ class CosinusoidalFit(Calibration1DAnalysis):
         for phi in np.linspace(-np.pi, np.pi, 10):
             yield np.array([a0, f0, phi, y_mean])
 
-    @classmethod
-    def fit_function(cls, xvals: np.ndarray, *args) -> np.ndarray:
+    def fit_function(self, xvals: np.ndarray, *args) -> np.ndarray:
         return args[0] * np.cos(2 * np.pi * args[1] * xvals + args[2]) + args[3]
 
-    @classmethod
-    def fit_boundary(cls,
+    def fit_boundary(self,
                      xvals: np.ndarray,
-                     yvals: np.ndarray) -> Tuple[List[float], List[float]]:
-        return [-np.inf, 0, -np.pi, -np.inf], [np.inf, np.inf, np.pi, np.inf]
+                     yvals: np.ndarray) -> List[Tuple[float, float]]:
+
+        return [(-np.inf, np.inf), (0, np.inf), (-np.pi, np.pi), (-np.inf, np.inf)]
