@@ -44,21 +44,6 @@ CalValue.validation.__doc__ = 'Calibration data validation status.'
 CalValue.timestamp.__doc__ = 'Time information of when this value is created.'
 
 
-# Fit result
-FitResult = NamedTuple(
-    'FitResult',
-    [('fitval', List[float]),
-     ('stdev', List[float]),
-     ('chisq', float),
-     ('xvals', np.ndarray),
-     ('yvals', np.ndarray)]
-)
-FitResult.__doc__ = 'Result data of fitting.'
-FitResult.fitval.__doc__ = 'Fit parameter values.'
-FitResult.stdev.__doc__ = 'Standard deviation of fit parameters.'
-FitResult.chisq.__doc__ = 'Reduced Chi squared value of fit result.'
-
-
 class SingleQubitPulses(Enum):
     """Name of single qubit gates."""
     X90P = 'x90p'

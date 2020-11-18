@@ -31,6 +31,11 @@ class CalibrationMetadata:
     # Physical qubits used.
     qubits: List[int] = None
 
+    # Mapping of qubit index and classical register index.
+    # The key is the qubit index and value is the classical bit index.
+    # This mapping is automatically generated at BaseCalibrationExperiment class.
+    register_map: Dict[int, int] = None
+
     def to_dict(self) -> dict:
         """Export the meta data to a dict structure."""
         return {
@@ -39,5 +44,6 @@ class CalibrationMetadata:
             'x_values': self.x_values,
             'pulse_schedule_name': self.pulse_schedule_name,
             'exp_id': self.exp_id,
-            'qubits': self.qubits
+            'qubits': self.qubits,
+            'register_map': self.register_map
         }

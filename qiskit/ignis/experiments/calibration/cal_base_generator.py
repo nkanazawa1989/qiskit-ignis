@@ -59,7 +59,7 @@ class Base1QCalibrationGenerator(Generator):
 
     def circuits(self) -> List[QuantumCircuit]:
         """
-        Return a list of circuits that are run in the calibration eperiment.
+        Return a list of circuits that are run in the calibration experiment.
         Each circuit corresponds to one of the specified parameter values.
         This function is also responsible for adding the
         meta data to the circuits.

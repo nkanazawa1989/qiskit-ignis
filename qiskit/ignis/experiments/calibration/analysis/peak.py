@@ -15,14 +15,13 @@ import numpy as np
 from typing import Iterator, Tuple, List
 
 
-from qiskit.ignis.experiments.calibration.analysis.cal_1d_analysis import Calibration1DAnalysis
+from qiskit.ignis.experiments.calibration.cal_base_analysis import BaseCalibrationAnalysis
 
 
-class GaussianFit(Calibration1DAnalysis):
+class GaussianFit(BaseCalibrationAnalysis):
     r"""Fit with $F(x) = a \exp(\frac{(x-x_0)^2}{2\sigma^2}) + b$."""
 
-    @classmethod
-    def initial_guess(cls,
+    def initial_guess(self,
                       xvals: np.ndarray,
                       yvals: np.ndarray) -> Iterator[np.ndarray]:
         y_mean = np.mean(yvals)
@@ -35,12 +34,11 @@ class GaussianFit(Calibration1DAnalysis):
 
         yield np.array([y_peak - y_mean, x_peak, x1 - x0, y_mean])
 
-    @classmethod
-    def fit_function(cls, xvals: np.ndarray, *args) -> np.ndarray:
+    def fit_function(self, xvals: np.ndarray, *args) -> np.ndarray:
         return args[0] * np.exp(-(xvals - args[1])**2/(2 * args[2]**2)) + args[3]
 
-    @classmethod
-    def fit_boundary(cls,
+    def fit_boundary(self,
                      xvals: np.ndarray,
-                     yvals: np.ndarray) -> Tuple[List[float], List[float]]:
-        return [-np.inf, xvals[0], 0, -np.inf], [np.inf, xvals[-1], np.inf, np.inf]
+                     yvals: np.ndarray) -> List[Tuple[float, float]]:
+
+        return [(-np.inf, np.inf), (-np.inf, np.inf), (0, np.inf), (-np.inf, np.inf)]

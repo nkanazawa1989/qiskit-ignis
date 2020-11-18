@@ -27,5 +27,4 @@ each circuit should therefore be a dict with one entry and have the form
 {parameter_name: parameter_value}.
 """
 
-from qiskit.ignis.experiments.calibration.analysis.cal_1d_analysis import Calibration1DAnalysis
 from qiskit.ignis.experiments.calibration.mock import FakeTwoQubitParameters
