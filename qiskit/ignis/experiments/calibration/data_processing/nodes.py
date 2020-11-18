@@ -13,50 +13,17 @@
 from typing import Optional, Any, Dict, Union
 
 import numpy as np
-
-from qiskit.ignis.experiments.calibration import workflow
+from qiskit.ignis.experiments.calibration.data_processing import base
+from qiskit.ignis.experiments.calibration.data_processing.base import AnalysisStep
+from qiskit.ignis.experiments.calibration.cal_metadata import CalibrationMetadata
 from qiskit.result.counts import Counts
-from qiskit.result.utils import marginal_counts
-
-
-# root node
-
-@workflow.root
-class Marginalize(workflow.AnalysisRoutine):
-    """Remove redundant memory slot from the result."""
-    def process(self,
-                data: Union[Counts, np.ndarray],
-                metadata: Dict[str, Any],
-                shots: int):
-        """Process input data."""
-        if 'qubits' in metadata:
-            qinds = list(range(len(metadata['qubits'])))
-            if isinstance(data, Counts):
-                # count dictionary
-                marginal_data = marginal_counts(data, indices=qinds)
-            else:
-                # IQ data
-                if len(data.shape) > 1:
-                    # single shot
-                    marginal_data = np.zeros((data.shape[0], len(qinds)), dtype=complex)
-                    for slot_ind, qind in enumerate(qinds):
-                        marginal_data[:, slot_ind] = data[:, qind]
-                else:
-                    # averaged
-                    marginal_data = np.zeros(len(qinds), dtype=complex)
-                    for slot_ind, qind in enumerate(qinds):
-                        marginal_data[slot_ind] = data[qind]
-        else:
-            marginal_data = data
-
-        return marginal_data
 
 
 # kernels
 
-@workflow.kernel
-@workflow.prev_node(Marginalize)
-class SystemKernel(workflow.AnalysisRoutine):
+@base.kernel
+@base.prev_node()
+class SystemKernel(AnalysisStep):
     """Backend system kernel."""
     def __init__(self, name: Optional[str] = None):
         self.name = name
@@ -64,16 +31,16 @@ class SystemKernel(workflow.AnalysisRoutine):
 
     def process(self,
                 data: Any,
-                metadata: Dict[str, Any],
+                metadata: CalibrationMetadata,
                 shots: int):
         return data
 
 
 # discriminators
 
-@workflow.discriminator
-@workflow.prev_node(SystemKernel)
-class SystemDiscriminator(workflow.AnalysisRoutine):
+@base.discriminator
+@base.prev_node(SystemKernel)
+class SystemDiscriminator(AnalysisStep):
     """Backend system discriminator."""
     def __init__(self, name: Optional[str] = None):
         self.name = name
@@ -81,16 +48,16 @@ class SystemDiscriminator(workflow.AnalysisRoutine):
 
     def process(self,
                 data: Any,
-                metadata: Dict[str, Any],
+                metadata: CalibrationMetadata,
                 shots: int):
         return data
 
 
 # IQ data post-processing
 
-@workflow.iq_data
-@workflow.prev_node(SystemKernel)
-class RealNumbers(workflow.AnalysisRoutine):
+@base.iq_data
+@base.prev_node(SystemKernel)
+class RealNumbers(AnalysisStep):
     """IQ data post-processing. This returns real part of IQ data."""
     def __init__(self, scale: Optional[float] = 1.0):
         self.scale = scale
@@ -98,14 +65,14 @@ class RealNumbers(workflow.AnalysisRoutine):
 
     def process(self,
                 data: Union[float, np.ndarray],
-                metadata: Dict[str, Any],
+                metadata: CalibrationMetadata,
                 shots: int):
         return self.scale * data.real
 
 
-@workflow.iq_data
-@workflow.prev_node(SystemKernel)
-class ImagNumbers(workflow.AnalysisRoutine):
+@base.iq_data
+@base.prev_node(SystemKernel)
+class ImagNumbers(AnalysisStep):
     """IQ data post-processing. This returns imaginary part of IQ data."""
     def __init__(self, scale: Optional[float] = 1.0):
         self.scale = scale
@@ -113,21 +80,21 @@ class ImagNumbers(workflow.AnalysisRoutine):
 
     def process(self,
                 data: Any,
-                metadata: Dict[float, np.ndarray],
+                metadata: CalibrationMetadata,
                 shots: int):
         return self.scale * data.imag
 
 
-# Counts
+# Count data post-processing
 
-@workflow.counts
-@workflow.prev_node(SystemDiscriminator)
-class Population(workflow.AnalysisRoutine):
+@base.counts
+@base.prev_node(SystemDiscriminator)
+class Population(AnalysisStep):
     """Count data post processing. This returns population."""
 
     def process(self,
                 data: Counts,
-                metadata: Dict[float, np.ndarray],
+                metadata: CalibrationMetadata,
                 shots: int):
 
         populations = np.zeros(len(list(data.keys())[0]))

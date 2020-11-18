@@ -17,22 +17,24 @@ from abc import ABCMeta, abstractmethod
 from enum import Enum
 from typing import Any, Dict
 
+from qiskit.ignis.experiments.calibration.cal_metadata import CalibrationMetadata
 from qiskit.ignis.experiments.calibration.exceptions import CalExpError
 
 
-class AnalysisRoutine(metaclass=ABCMeta):
+class AnalysisStep(metaclass=ABCMeta):
     node_type = None
     prev_node = ()
 
     def __init__(self):
-        """Create new workflow."""
+        """Create new data analysis routine.
+        """
         self._child = None
 
     @property
     def child(self):
         return self._child
 
-    def append(self, component: 'AnalysisRoutine'):
+    def append(self, component: 'AnalysisStep'):
         """Add new data processing routine.
 
         Args:
@@ -56,13 +58,13 @@ class AnalysisRoutine(metaclass=ABCMeta):
     @abstractmethod
     def process(self,
                 data: Any,
-                metadata: Dict[str, Any],
+                metadata: CalibrationMetadata,
                 shots: int):
-        pass
+        raise NotImplementedError
 
     def format_data(self,
                     data: Any,
-                    metadata: Dict[str, Any],
+                    metadata: CalibrationMetadata,
                     shots: int):
         processed_data = self.process(data, metadata, shots)
 
@@ -73,44 +75,37 @@ class AnalysisRoutine(metaclass=ABCMeta):
 
 
 class NodeType(Enum):
-    ROOT = 0
     KERNEL = 1
     DISCRIMINATOR = 2
     IQDATA = 3
     COUNTS = 4
 
 
-def root(cls: AnalysisRoutine):
-    """A decorator to give root attribute to node."""
-    cls.node_type = NodeType.ROOT
-    return cls
-
-
-def kernel(cls: AnalysisRoutine):
+def kernel(cls: AnalysisStep):
     """A decorator to give kernel attribute to node."""
     cls.node_type = NodeType.KERNEL
     return cls
 
 
-def discriminator(cls: AnalysisRoutine):
+def discriminator(cls: AnalysisStep):
     """A decorator to give discriminator attribute to node."""
     cls.node_type = NodeType.DISCRIMINATOR
     return cls
 
 
-def iq_data(cls: AnalysisRoutine):
+def iq_data(cls: AnalysisStep):
     """A decorator to give iqdata attribute to node."""
     cls.node_type = NodeType.IQDATA
     return cls
 
 
-def counts(cls: AnalysisRoutine):
+def counts(cls: AnalysisStep):
     """A decorator to give counts attribute to node."""
     cls.node_type = NodeType.COUNTS
     return cls
 
 
-def prev_node(*nodes: AnalysisRoutine):
+def prev_node(*nodes: AnalysisStep):
     """A decorator to specify the available previous nodes."""
 
     try:
@@ -118,7 +113,7 @@ def prev_node(*nodes: AnalysisRoutine):
     except TypeError:
         nodes = [nodes]
 
-    def add_nodes(cls: AnalysisRoutine):
+    def add_nodes(cls: AnalysisStep):
         cls.prev_node = tuple(nodes)
         return cls
 

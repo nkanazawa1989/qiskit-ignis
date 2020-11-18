@@ -13,9 +13,10 @@
 """Qiskit Ignis calibration module."""
 
 import uuid
-from typing import List
+from typing import List, Dict
 
-from qiskit import transpile, schedule, assemble, pulse
+from qiskit import transpile, schedule, assemble, pulse, QuantumCircuit
+from qiskit.circuit.measure import Measure
 from qiskit.providers import BaseBackend, BaseJob
 
 from qiskit.ignis.experiments.base import Experiment
@@ -31,19 +32,27 @@ class BaseCalibrationExperiment(Experiment):
 
         # TODO: Add transpiler & scheduler options
 
-        # check backend consistency
-        #if backend.name() != self.generator.associated_backend:
-        #    raise CalExpError('Executing on the wrong backend. '
-        #                      'Pulse are generated based on the calibration table of {back1}, '
-        #                      'but experiments are running on {back2}.'
-        #                      ''.format(back1=self.generator.table.backend_name,
-        #                                back2=backend.name()))
-
         # Get schedule
         circuits = transpile(self.generator.circuits(),
                              backend=backend,
                              initial_layout=self.generator.qubits)
+
         return schedule(circuits, backend=backend)
+
+    def register_maps(self, backend: BaseBackend) -> List[Dict[int, int]]:
+        """Return index mapping of qubits and clbits in measurement instructions."""
+        # Get schedule
+        circuits = transpile(self.generator.circuits(),
+                             backend=backend,
+                             initial_layout=self.generator.qubits)
+
+        # Get register index mapping
+        regmaps = []
+        for circ in circuits:
+            regmap = BaseCalibrationExperiment._get_qubit_clbit_map(circ)
+            regmaps.append(regmap)
+
+        return regmaps
 
     def execute(self, backend: BaseBackend, **kwargs) -> 'BaseCalibrationExperiment':
         """Execute the experiment on a backend.
@@ -60,26 +69,42 @@ class BaseCalibrationExperiment(Experiment):
         exp_id = str(uuid.uuid4())
 
         schedules = self.schedules(backend=backend)
+        regmaps = self.register_maps(backend=backend)
         metadata = self.generator.metadata()
 
-        for meta in metadata:
+        for meta, regmap in zip(metadata, regmaps):
             meta['name'] = self.generator.name
             meta['exp_id'] = exp_id
             meta['qubits'] = self.generator.qubits
+            meta['register_map'] = regmap
 
         # The analysis data processing requires certain predefined data types.
         self.analysis.workflow.shots = kwargs.get('shots', 1024)
         shots = self.analysis.workflow.shots
-        meas_level = self.analysis.workflow.meas_level()
-        meas_return = self.analysis.workflow.meas_return()
 
         # Assemble and submit to backend
         qobj = assemble(schedules,
                         backend=backend,
                         qobj_header={'metadata': metadata},
-                        meas_level=meas_level,
-                        meas_return=meas_return,
+                        meas_level=self.analysis.workflow.meas_level(),
+                        meas_return=self.analysis.workflow.meas_return(),
                         shots=shots,
                         **kwargs)
         self._job = backend.run(qobj)
         return self
+
+    @classmethod
+    def _get_qubit_clbit_map(cls, circ: QuantumCircuit) -> Dict[int, int]:
+        """A helper method to get qubit and clbit mapping from the circuit.
+
+        Args:
+            circ: QuantuCircuit to investigate.
+        """
+        register_map = dict()
+        for inst, qubits, clbits in circ.data:
+            if isinstance(inst, Measure):
+                # this mapping doesn't support multiple measurement
+                # if there is multiple measurement for a qubit, old index will be overwritten.
+                register_map[qubits[0].index] = clbits[0].index
+
+        return register_map

@@ -22,7 +22,7 @@ from scipy import optimize
 from qiskit.ignis.experiments.base import Analysis
 from qiskit.ignis.experiments.calibration import types
 from qiskit.ignis.experiments.calibration.cal_metadata import CalibrationMetadata
-from qiskit.ignis.experiments.calibration.workflow import AnalysisWorkFlow
+from qiskit.ignis.experiments.calibration.data_processing import DataProcessingSteps
 
 
 class Calibration1DAnalysis(Analysis):
@@ -36,7 +36,7 @@ class Calibration1DAnalysis(Analysis):
                  data: Optional[Any] = None,
                  metadata: Optional[Dict[str, Any]] = None,
                  exp_id: Optional[str] = None,
-                 workflow: Optional[AnalysisWorkFlow] = None):
+                 workflow: Optional[DataProcessingSteps] = None):
         """Initialize calibration experiment analysis
 
         Args:
@@ -80,7 +80,7 @@ class Calibration1DAnalysis(Analysis):
         return self._workflow
 
     @workflow.setter
-    def workflow(self, work_flow: AnalysisWorkFlow):
+    def workflow(self, work_flow: DataProcessingSteps):
         """Set workflow."""
         self._workflow = work_flow
 
