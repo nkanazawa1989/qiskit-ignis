@@ -14,14 +14,16 @@
 
 import dataclasses
 import re
+import inspect
 from enum import Enum
-from typing import List, Dict, NamedTuple, Iterator, Any, Union, Tuple
+from typing import List, Dict, NamedTuple, Iterator, Union, Optional
 
-from qiskit import pulse
+from qiskit import pulse, circuit
+from qiskit.ignis.experiments.calibration.instruction_data import utils
 
 
 class TokenSpec(Enum):
-    """Defined syntax of calibration schedule DSL.
+    """Map the AST node name to the DSL syntax.
 
     The enum name is the AST node type, the value is its mapping to the DSL syntax.
     """
@@ -29,6 +31,7 @@ class TokenSpec(Enum):
     CONTEXT_EXIT = r'}'
     REFERENCE = r'&(?P<name>[\w]*)'
     PULSE = r'%(?P<name>[\w]*)\((?P<channel>[a-z][0-9]+),(?P<shape>[\w]*)\)'
+    FRAME = r'$(?P<name>[\w]*)\((?P<channel>[a-z][0-9]+),(?P<operand>[0-9.]+)\)'
 
 
 class ParametricPulseShapes(Enum):
@@ -105,13 +108,13 @@ class PulseInst(Inst):
 
 
 @dataclasses.dataclass(frozen=True)
-class AuxInst(Inst):
+class FrameInst(Inst):
     """A leaf that represents non-pulse schedule component such as frame change."""
     channel: str
-    operands: Tuple[Any]
+    operand: float
 
     def __repr__(self):
-        return 'Aux({},{})'.format(self.name, ','.join(map(str, self.operands)))
+        return 'Frame({},{})'.format(self.name, self.operand)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -119,7 +122,7 @@ class Reference(Inst):
     """A leaf that represents a reference to another schedule definition."""
 
     def __repr__(self):
-        return 'Reference({})'.format(self.name)
+        return 'Ref({})'.format(self.name)
 
 
 @dataclasses.dataclass
@@ -141,7 +144,7 @@ def parse(source: str) -> ScheduleBlock:
     schedule = ScheduleBlock()
     stack = []
     for token in _tokenizer(source):
-        if token.type in [TokenSpec.PULSE.name, TokenSpec.REFERENCE.name]:
+        if token.type in [TokenSpec.PULSE.name, TokenSpec.REFERENCE.name, TokenSpec.FRAME.name]:
             # add instruction to parent schedule block
             if stack:
                 stack[-1].children.append(_parse_node(token))
@@ -177,6 +180,9 @@ def _parse_node(token: Token) -> Inst:
     # pulse
     if token.type == TokenSpec.PULSE.name:
         return PulseInst(**token.data)
+    # pulse
+    if token.type == TokenSpec.FRAME.name:
+        return FrameInst(**token.data)
     # reference
     if token.type == TokenSpec.REFERENCE.name:
         return Reference(**token.data)
@@ -194,11 +200,27 @@ class NodeVisitor:
 
     def __init__(self):
         """"""
-        self.pulse_table = None
-        self.sched_table = None
+        self.inst_def = None
         self.id = None
+        self.free_parameters = []
         self.shape_map = ParametricPulseShapes
         self.channel_map = ChannelPrefixes
+
+    def __call__(self,
+                 source: str,
+                 free_parameters: Optional[List[str]]) -> pulse.Schedule:
+        """Parse source code and return Schedule.
+
+        Args:
+            source: Calibration DSL representing a pulse schedule.
+
+        Returns:
+            Pulse schedule object.
+        """
+        self.free_parameters = free_parameters
+        tree = parse(source)
+
+        return self.visit(tree)
 
     def _get_channel(self, ch_str: str) -> pulse.Channel:
         """A helper function to convert channel string into Qiskit object.
@@ -216,6 +238,26 @@ class NodeVisitor:
 
         raise Exception('Channel name {name} is not correct syntax.'.format(name=ch_str))
 
+    def _get_parameter_names(self, pulse_shape: pulse.ParametricPulse) -> List[str]:
+        """A helper function to extract a list of parameter names to construct the class.
+
+        Args:
+            pulse_shape: Parametric pulse subclass.
+
+        Returns:
+            List of parameter names except for `self` and `name`.
+        """
+        removes = ['self', 'name']
+
+        const_signature = inspect.signature(pulse_shape.__init__)
+
+        pnames = []
+        for pname in const_signature.parameters.keys():
+            if pname not in removes:
+                pnames.append(pname)
+
+        return pnames
+
     def visit(self, node):
         """Visit a node."""
         method = 'visit_' + node.__class__.__name__
@@ -232,20 +274,35 @@ class NodeVisitor:
         Returns:
             Play instruction.
         """
+        parametric_pulse = self.shape_map[node.shape]
+
+        # get parameters from table
         query = (node.name, node.channel, self.id)
-        played_pulse = self.shape_map[node.shape](**self.pulse_table.get_kwargs(*query))
+        stored_parameters = self.inst_def.pulse_parameter_table.get_instruction_kwargs(*query)
+
+        # generate parameter names on the fly
+        parametric_pulse_kwargs = dict()
+        for pname in self._get_parameter_names(parametric_pulse):
+            scoped_pname = utils.add_scope(pname, node.channel, node.name)
+            if scoped_pname in self.free_parameters or pname not in stored_parameters:
+                # parametrize if free parameter or no entry in the database
+                parametric_pulse_kwargs[pname] = circuit.Parameter(scoped_pname)
+            else:
+                parametric_pulse_kwargs[pname] = stored_parameters[pname]
+
+        played_pulse = parametric_pulse(**parametric_pulse_kwargs)
         channel = self._get_channel(node.channel)
 
         return pulse.Play(played_pulse, channel)
 
-    def visit_AuxInst(self, node: AuxInst):
-        """Evaluate non-pulse instruction node and return non-pulse instruction.
+    def visit_FrameInst(self, node: FrameInst):
+        """Evaluate frame instruction node and return frame change instruction.
 
         Args:
-            node: AuxInst node to evaluate.
+            node: FrameInst node to evaluate.
 
         Returns:
-            Arbitrary non-pulse instruction specified by AST name.
+            Arbitrary frame change instruction specified by AST name.
         """
         raise NotImplementedError
 
@@ -258,7 +315,7 @@ class NodeVisitor:
         Returns:
             Arbitrary schedule from another schedule database entry.
         """
-        return self.sched_table.get(node.name)
+        return self.inst_def.get_schedule(node.name)
 
     def visit_ScheduleBlock(self, node: ScheduleBlock):
         """Evaluate schedule block node and return arbitrary schedule.

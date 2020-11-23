@@ -220,3 +220,17 @@ def parse_backend_instmap(
             sched_template.set_template_schedule(qinds, inst_name, temp_sched)
 
     return pulse_table, sched_template
+
+
+def add_scope(name: str, channel: str, gate: str) -> str:
+    """Add scope to parameter name.
+
+    Args:
+        name: Name of parameter.
+        channel: Name of channel that the pulse associated with the parameter belongs to.
+        gate: Name of gate that the pulse associated with the parameter composes.
+
+    Returns:
+          Name of parameter in local scope.
+    """
+    return '{}.{}.{}'.format(gate, channel, name)
