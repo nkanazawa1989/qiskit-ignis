@@ -20,6 +20,7 @@ from typing import List, Dict, NamedTuple, Iterator, Union, Optional
 
 from qiskit import pulse, circuit
 from qiskit.ignis.experiments.calibration.instruction_data import utils
+from qiskit.ignis.experiments.calibration.instruction_data import InstructionsDefinition
 
 
 class TokenSpec(Enum):
@@ -198,13 +199,17 @@ class NodeVisitor:
     """Create pulse schedule from abstract syntax tree."""
     chan_regex = re.compile(r'([a-zA-Z]+)(\d+)')
 
-    def __init__(self):
+    def __init__(self,
+                 inst_def: InstructionsDefinition,
+                 shape_map: Optional[Enum] = None,
+                 channel_map: Optional[Enum] = None):
         """"""
-        self.inst_def = None
+        self.inst_def = inst_def
+        self.shape_map = shape_map or ParametricPulseShapes
+        self.channel_map = channel_map or ChannelPrefixes
+
         self.id = None
         self.free_parameters = []
-        self.shape_map = ParametricPulseShapes
-        self.channel_map = ChannelPrefixes
 
     def __call__(self,
                  source: str,
@@ -217,6 +222,8 @@ class NodeVisitor:
         Returns:
             Pulse schedule object.
         """
+        # TODO get source from id.
+
         self.free_parameters = free_parameters
         tree = parse(source)
 
