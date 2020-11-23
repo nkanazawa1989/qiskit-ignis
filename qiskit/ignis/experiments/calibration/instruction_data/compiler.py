@@ -229,7 +229,7 @@ class NodeVisitor:
 
         return self.visit(tree)
 
-    def _get_channel(self, ch_str: str) -> pulse.Channel:
+    def _get_channel(self, ch_str: str) -> pulse.channels.Channel:
         """A helper function to convert channel string into Qiskit object.
 
         Args:
@@ -272,7 +272,7 @@ class NodeVisitor:
 
         return visitor(node)
 
-    def visit_PulseInst(self, node: PulseInst):
+    def visit_PulseInst(self, node: PulseInst) -> pulse.Instruction:
         """Evaluate pulse instruction node and return play instruction.
 
         Args:
@@ -302,7 +302,7 @@ class NodeVisitor:
 
         return pulse.Play(played_pulse, channel)
 
-    def visit_FrameInst(self, node: FrameInst):
+    def visit_FrameInst(self, node: FrameInst) -> pulse.Instruction:
         """Evaluate frame instruction node and return frame change instruction.
 
         Args:
@@ -313,7 +313,7 @@ class NodeVisitor:
         """
         raise NotImplementedError
 
-    def visit_Reference(self, node: Reference):
+    def visit_Reference(self, node: Reference) -> pulse.Schedule:
         """Evaluate reference node and return arbitrary schedule.
 
         Args:
@@ -324,7 +324,7 @@ class NodeVisitor:
         """
         return self.inst_def.get_schedule(node.name)
 
-    def visit_ScheduleBlock(self, node: ScheduleBlock):
+    def visit_ScheduleBlock(self, node: ScheduleBlock) -> pulse.Schedule:
         """Evaluate schedule block node and return arbitrary schedule.
 
         Args:
