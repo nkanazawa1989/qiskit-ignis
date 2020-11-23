@@ -14,13 +14,11 @@
 
 import dataclasses
 import re
-import inspect
 from enum import Enum
 from typing import List, Dict, NamedTuple, Iterator, Union, Optional
 
 from qiskit import pulse, circuit
 from qiskit.ignis.experiments.calibration.instruction_data import utils
-from qiskit.ignis.experiments.calibration.instruction_data import InstructionsDefinition
 
 
 class TokenSpec(Enum):
@@ -33,30 +31,6 @@ class TokenSpec(Enum):
     REFERENCE = r'&(?P<name>[\w]*)'
     PULSE = r'%(?P<name>[\w]*)\((?P<channel>[a-z][0-9]+),(?P<shape>[\w]*)\)'
     FRAME = r'$(?P<name>[\w]*)\((?P<channel>[a-z][0-9]+),(?P<operand>[0-9.]+)\)'
-
-
-class ParametricPulseShapes(Enum):
-    """Map the pulse shape name to the pulse module waveforms.
-
-    The enum name is the DSL name for pulse shapes, the
-    value is its mapping to the OpenPulse Command in Qiskit.
-    """
-    gaus = pulse.Gaussian
-    gaus_sq = pulse.GaussianSquare
-    drag = pulse.Drag
-    constant = pulse.Constant
-
-
-class ChannelPrefixes(Enum):
-    """Map the pulse channel name to the pulse module channel object.
-
-    The enum name is the channel prefix, the
-    value is its mapping to the OpenPulse Channel in Qiskit.
-    """
-    d = pulse.DriveChannel
-    u = pulse.ControlChannel
-    m = pulse.MeasureChannel
-    a = pulse.AcquireChannel
 
 
 #
@@ -199,22 +173,31 @@ class NodeVisitor:
     """Create pulse schedule from abstract syntax tree."""
     chan_regex = re.compile(r'([a-zA-Z]+)(\d+)')
 
-    def __init__(self,
-                 inst_def: InstructionsDefinition,
-                 shape_map: Optional[Enum] = None,
-                 channel_map: Optional[Enum] = None):
-        """"""
-        self.inst_def = inst_def
-        self.shape_map = shape_map or ParametricPulseShapes
-        self.channel_map = channel_map or ChannelPrefixes
+    def __init__(self, inst_def: 'InstructionsDefinition'):
+        """Create new parser.
 
-        self.id = None
-        self.free_parameters = []
+        Args:
+              inst_def: Instruction definition object.
+        """
+        self._inst_def = inst_def
+
+        # these parameters are set on the fly
+        # TODO remove them
+        self._gate_id = None
+        self._free_parameters = []
 
     def __call__(self,
                  source: str,
-                 free_parameters: Optional[List[str]]) -> pulse.Schedule:
+                 gate_id: str,
+                 free_parameters: Optional[List[str]] = None) -> pulse.Schedule:
         """Parse source code and return Schedule.
+
+        TODO remove gate_id and free parameters from parser.
+        Blocker is parametrization of pulse duration.
+        If we can parametrize the duration, we can populate schedule with unbound parameters and
+        parser doesn't need to call parameter table to get integer duration.
+        Thus everything can be correctly offloaded the parameter binding operation
+        to the get_gate_schedule method that calls this parser.
 
         Args:
             source: Calibration DSL representing a pulse schedule.
@@ -222,12 +205,10 @@ class NodeVisitor:
         Returns:
             Pulse schedule object.
         """
-        # TODO get source from id.
+        self._gate_id = gate_id
+        self._free_parameters = free_parameters or []
 
-        self.free_parameters = free_parameters
-        tree = parse(source)
-
-        return self.visit(tree)
+        return self.visit(parse(source))
 
     def _get_channel(self, ch_str: str) -> pulse.channels.Channel:
         """A helper function to convert channel string into Qiskit object.
@@ -241,29 +222,10 @@ class NodeVisitor:
         match = self.chan_regex.match(ch_str)
         if match:
             prefix, index = match.group(1), int(match.group(2))
-            return self.channel_map[prefix](index=index)
+            channel = self._inst_def.pulse_channels[prefix].value
+            return channel(index=index)
 
         raise Exception('Channel name {name} is not correct syntax.'.format(name=ch_str))
-
-    def _get_parameter_names(self, pulse_shape: pulse.ParametricPulse) -> List[str]:
-        """A helper function to extract a list of parameter names to construct the class.
-
-        Args:
-            pulse_shape: Parametric pulse subclass.
-
-        Returns:
-            List of parameter names except for `self` and `name`.
-        """
-        removes = ['self', 'name']
-
-        const_signature = inspect.signature(pulse_shape.__init__)
-
-        pnames = []
-        for pname in const_signature.parameters.keys():
-            if pname not in removes:
-                pnames.append(pname)
-
-        return pnames
 
     def visit(self, node):
         """Visit a node."""
@@ -281,23 +243,29 @@ class NodeVisitor:
         Returns:
             Play instruction.
         """
-        parametric_pulse = self.shape_map[node.shape]
-
-        # get parameters from table
-        query = (node.name, node.channel, self.id)
-        stored_parameters = self.inst_def.pulse_parameter_table.get_instruction_kwargs(*query)
+        parametric_pulse = self._inst_def.parametric_shapes[node.shape].value
 
         # generate parameter names on the fly
         parametric_pulse_kwargs = dict()
-        for pname in self._get_parameter_names(parametric_pulse):
+        for pname in utils.get_pulse_parameters(parametric_pulse):
             scoped_pname = utils.add_scope(pname, node.channel, node.name)
-            if scoped_pname in self.free_parameters or pname not in stored_parameters:
-                # parametrize if free parameter or no entry in the database
-                parametric_pulse_kwargs[pname] = circuit.Parameter(scoped_pname)
+            # TODO calling parameter biding here is bit strange.
+            # This parameter binding should be offloaded to the get_gate_schedule method.
+            # However, we cannot do this now because of parametrization of duration.
+            # The role of parser is to create program, not the parameter-bound schedule.
+            param_val = self._inst_def.pulse_parameter_table.get_parameter(
+                parameter=scoped_pname,
+                gate_id=self._gate_id,
+                series=self._inst_def.series
+            )
+            if param_val is not None and scoped_pname not in self._free_parameters:
+                parametric_pulse_kwargs[pname] = param_val
             else:
-                parametric_pulse_kwargs[pname] = stored_parameters[pname]
+                parametric_pulse_kwargs[pname] = circuit.Parameter(scoped_pname)
 
-        played_pulse = parametric_pulse(**parametric_pulse_kwargs)
+        # pulse name for visualization purpose
+        pulse_name = '{}.{}.{}'.format(node.name, node.channel, self._gate_id)
+        played_pulse = parametric_pulse(**parametric_pulse_kwargs, name=pulse_name)
         channel = self._get_channel(node.channel)
 
         return pulse.Play(played_pulse, channel)
@@ -322,7 +290,10 @@ class NodeVisitor:
         Returns:
             Arbitrary schedule from another schedule database entry.
         """
-        return self.inst_def.get_schedule(node.name)
+        return self._inst_def.get_gate_schedule(
+            gate_id=node.name,
+            free_parameter_names=self._free_parameters
+        )
 
     def visit_ScheduleBlock(self, node: ScheduleBlock) -> pulse.Schedule:
         """Evaluate schedule block node and return arbitrary schedule.
@@ -335,7 +306,7 @@ class NodeVisitor:
         """
         sched_block = pulse.Schedule()
         for sched_component in list(map(self.visit, node.children)):
-            sched_block.append(sched_component)
+            sched_block.append(sched_component, inplace=True)
 
         if node.context_type == 'left':
             return pulse.transforms.align_left(sched_block)

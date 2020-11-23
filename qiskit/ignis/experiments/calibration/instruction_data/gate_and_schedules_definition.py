@@ -1,15 +1,30 @@
-import copy
-import numpy as np
-from typing import Dict, Union, List, Tuple, Iterable, Optional
+# This code is part of Qiskit.
+#
+# (C) Copyright IBM 2020.
+#
+# This code is licensed under the Apache License, Version 2.0. You may
+# obtain a copy of this license in the LICENSE.txt file in the root directory
+# of this source tree or at http://www.apache.org/licenses/LICENSE-2.0.
+#
+# Any modifications or derivative works of this code must retain this
+# copyright notice, and modified files need to carry a notice indicating
+# that they have been altered from the originals.
 
-from qiskit import QuantumCircuit, pulse, schedule
-from qiskit.circuit import ParameterExpression, Gate, Parameter
-from qiskit.pulse import (Play, Schedule, ControlChannel, ParametricPulse, DriveChannel,
-                          MeasureChannel, ShiftPhase)
-from qiskit.pulse.channels import PulseChannel
+"""User interface of database."""
+
+import hashlib
+from enum import Enum
+from typing import Dict, Union, List, Tuple, Optional
+
+import pandas as pd
+from qiskit.circuit import Gate
 from qiskit.providers.basebackend import BaseBackend
-from qiskit.ignis.experiments.calibration.instruction_data.database import PulseTable
-from qiskit.ignis.experiments.calibration.instruction_data.utils import parse_backend_instmap
+from qiskit.pulse import Schedule
+
+from qiskit import QuantumCircuit
+from qiskit.ignis.experiments.calibration.instruction_data import compiler
+from qiskit.ignis.experiments.calibration.instruction_data import utils
+from qiskit.ignis.experiments.calibration.instruction_data.parameter_table import PulseParameterTable
 
 
 class InstructionsDefinition:
@@ -19,20 +34,23 @@ class InstructionsDefinition:
     The class allows users to define single-pulse schedules as quantum circuits and
     then leverage the quantum circuit compose operation to compose more complex
     circuits from basic circuits.
-
-    # TODO
-    - test recursive behavior of instructions
     """
+    TABLE_COLS = ['gate_name', 'qubits', 'signature', 'gate_id', 'program']
 
-    def __init__(self, backend_name: str, n_qubits: int, channel_qubit_map: Dict,
-                 pulse_table: Optional[PulseTable] = None):
+    def __init__(self,
+                 backend_name: str,
+                 n_qubits: int,
+                 channel_qubit_map: Dict[str, Tuple[int]],
+                 pulse_table: Optional[PulseParameterTable] = None,
+                 parametric_shapes: Optional[Enum] = None,
+                 pulse_channels: Optional[Enum] = None):
         """
         Args:
             backend: The backend for which the instructions are defined.
         """
 
         # Dict to store the instructions we are calibrating
-        self._instructions = {}
+        self._instructions = pd.DataFrame(index=[], columns=InstructionsDefinition.TABLE_COLS)
 
         # Table to store the calibrated pulse parameters
         self.backend_name = backend_name
@@ -40,10 +58,15 @@ class InstructionsDefinition:
         if pulse_table:
             self._pulse_table = pulse_table
         else:
-            self._pulse_table = PulseTable()
+            self._pulse_table = PulseParameterTable(channel_qubit_map=channel_qubit_map)
 
         self._n_qubits = n_qubits
-        self._channel_map = channel_qubit_map
+
+        self._parametric_shapes = parametric_shapes or utils.ParametricPulseShapes
+        self._pulse_channels = pulse_channels or utils.ChannelPrefixes
+
+        # parameter set used to construct schedule
+        self._series = 'default'
 
     @classmethod
     def from_backend(cls, backend: BaseBackend) -> 'InstructionsDefinition':
@@ -55,30 +78,56 @@ class InstructionsDefinition:
         Returns:
             New InstructionSet instance.
         """
-        parameter_library = dict()
-        channel_qubit_map = dict()
+        # TODO implement this
+        # we need a logic to convert Schedule into database code.
+        # Schedule doesn't have context. Thus we need to infer the context.
 
-        for chname, ch_properties in backend.configuration().channels.items():
-            channel_qubit_map[chname] = tuple(ch_properties['operates']['qubits'])
+        raise NotImplementedError
 
-        pulse_table, sched_template = parse_backend_instmap(
-            channel_qubit_map=channel_qubit_map,
-            instmap=backend.defaults(refresh=True).instruction_schedule_map,
-            parameter_library=parameter_library)
-
-        return InstructionsDefinition(
-            backend_name=backend.name(),
-            n_qubits=backend.configuration().n_qubits,
-            channel_qubit_map=channel_qubit_map,
-            pulse_table=pulse_table)
+        # parameter_library = dict()
+        # channel_qubit_map = dict()
+        #
+        # for chname, ch_properties in backend.configuration().channels.items():
+        #     channel_qubit_map[chname] = tuple(ch_properties['operates']['qubits'])
+        #
+        # pulse_table, sched_template = parse_backend_instmap(
+        #     channel_qubit_map=channel_qubit_map,
+        #     instmap=backend.defaults(refresh=True).instruction_schedule_map,
+        #     parameter_library=parameter_library)
+        #
+        # return InstructionsDefinition(
+        #     backend_name=backend.name(),
+        #     n_qubits=backend.configuration().n_qubits,
+        #     channel_qubit_map=channel_qubit_map,
+        #     pulse_table=pulse_table)
 
     @property
-    def instructions(self) -> Dict[Tuple[str, Iterable], Schedule]:
-        """Return the instructions as a dict."""
+    def parametric_shapes(self) -> Enum:
+        """Return the definition of parametric pulses."""
+        return self._parametric_shapes
+
+    @property
+    def pulse_channels(self) -> Enum:
+        """Return the definition of pulse channels."""
+        return self._pulse_channels
+
+    @property
+    def series(self) -> str:
+        """Return the current data series to construct gate schedule."""
+        return self._series
+
+    @series.setter
+    def series(self, new_series):
+        """Set new series name."""
+        self._series = new_series
+
+    @property
+    def instructions(self) -> pd.DataFrame:
+        """Return the instructions as a data frame."""
         return self._instructions
 
     @property
-    def pulse_parameter_table(self) -> PulseTable:
+    def pulse_parameter_table(self) -> PulseParameterTable:
         """Returns the table of pulse parameters."""
         return self._pulse_table
 
@@ -86,212 +135,139 @@ class InstructionsDefinition:
         """Returns the calibrations."""
         return self._pulse_table.filter_data()
 
-    def get_circuit(self, name: str, qubits: Tuple,
+    def get_circuit(self,
+                    gate_name: str,
+                    qubits: Tuple,
                     free_parameter_names: List[str] = None) -> QuantumCircuit:
         """
         Wraps the schedule from the instructions table in a quantum circuit.
 
         Args:
-            name: name of the instruction to retrive
+            gate_name: name of the instruction to retrive
             qubits: qubits to which the instruction applies.
             free_parameter_names: Names of the parameter that should be left unbound.
                 If None is specified then all parameters will be bound to their
                 calibrated values.
         """
-        schedule = self.get_schedule(name, qubits, free_parameter_names)
+        schedule = self.get_gate_schedule(gate_name, qubits, free_parameter_names)
 
-        gate = Gate(name=name, num_qubits=len(qubits), params=schedule.parameters)
+        gate = Gate(name=gate_name, num_qubits=len(qubits), params=list(schedule.parameters))
         circ = QuantumCircuit(self._n_qubits)  # Probably a better way of doing this
         circ.append(gate, qubits)
         circ.add_calibration(gate, qubits, schedule, params=schedule.parameters)
 
         return circ
 
-    def get_schedule(self, name: str, qubits: Tuple,
-                     free_parameter_names: Optional[List[str]] = None) -> Schedule:
+    def add_gate_schedule(self,
+                          gate_name: str,
+                          qubits: Union[int, Tuple[int]],
+                          signature: List[str],
+                          schedule: Schedule):
+        """"""
+        # TODO implement this
+        raise NotImplementedError
+
+    def get_gate_schedule(self,
+                          gate_name: Optional[str] = None,
+                          qubits: Optional[Union[int, Tuple[int]]] = None,
+                          gate_id: Optional[str] = None,
+                          free_parameter_names: Optional[List[str]] = None) -> Schedule:
         """
-        Retrieves a schedule from the instructions dictionary.
+        Retrieves a schedule from the instructions data frame.
+
+        User can specify (gate_name, qubits) or unique schedule id to retrieve target schedule.
 
         Args:
-            name: Name of the schedule to retrive.
+            gate_name: Name of the schedule to retrive.
             qubits: qubits for which to get the schedule.
+            gate_id: Unique id of target schedule.
             free_parameter_names: List of parameter names that will be left unassigned.
                 The parameter assignment is done by querying the pulse parameter table.
 
         Returns:
-            schedule for the given (name, qubits) key.
+            schedule for the given input.
         """
-        schedule = self._instructions[(name, qubits)]
+        matched_entries = self._find_entries(gate_name, qubits, gate_id)
 
-        if not isinstance(schedule, Schedule):
-            schedule = self._get_composite_instruction(schedule)
+        if len(matched_entries) > 1:
+            raise Exception('Multiple entries are found. Database may be broken.')
 
-        schedule = copy.deepcopy(schedule)
+        program_parser = compiler.NodeVisitor(self)
 
-        if not free_parameter_names:
-            free_parameter_names = []
+        return program_parser(
+            source=matched_entries.iloc[0].program,
+            gate_id=matched_entries.iloc[0].gate_id,
+            free_parameters=free_parameter_names
+        )
 
-        binding_dict = {}
-        for param in schedule.parameters:
-            if param.name not in free_parameter_names:
-                binding_dict[param] = self._get_parameter_value(param)
-
-        schedule.assign_parameters(binding_dict)
-
-        return schedule
-
-    def _get_parameter_value(self, parameter: ParameterExpression) -> Union[float, int, complex]:
-        """
-        Helper method.
-
-        TODO This could be simplified by better integrating with PulseTable
-        """
-        inst_name, ch, pulse_type, name = parameter.name.split('.')
-        qubits = self._channel_map[ch]
-
-        return list(self._pulse_table.get_parameter(qubits, ch, inst_name, pulse_type, 1.0, name).values())[0].value
-
-    def _add_parameter(self, parameter: ParameterExpression, value: Union[float, int, complex],
-                       stretch_factor: Optional[float] = 1.0):
-        """
-        Helper method for current implementation.
-
-        TODO This should/could be moved to PulseTable
+    def _add_gate_schedule(self,
+                           gate_name: str,
+                           qubits: Union[int, Tuple[int]],
+                           signature: List[str],
+                           sched_code: str) -> str:
+        """A helper function to add new gate schedule to the database.
 
         Args:
-            parameter: A parameter to add to the DB.
-            value: The value of the parameter to add to the DB.
-            stretch_factor: The stretch factor of the gate.
+            gate_name: Gate name of this entry.
+            qubits: Qubit associated with this gate.
+            signature: A list of parameters passed to the instruction map.
+            sched_code: A string code representing pulse schedule.
+
+        Returns:
+            Generated gate id for this entry.
         """
-        inst_name, ch, pulse_type, name = parameter.name.split('.')
-        qubits = self._channel_map[ch]
+        if isinstance(qubits, int):
+            qubits = (qubits, )
 
-        self._pulse_table.set_parameter(qubits, ch, inst_name, pulse_type, stretch_factor, name, value)
+        gate_id = self._deduplicate_gate_id(gate_name, qubits)
 
-    def create_z_instruction(self, qubit: int, shift_u_channels: Optional[bool] = False):
-        """
-        Create a frame change instruction, i.e. a virtual Z gate.
-        This instruction will apply phase changes to all channels which involve qubit.
+        self._instructions = self._instructions.append(
+            {'gate_name': gate_name,
+             'qubits': qubits,
+             'signature': signature,
+             'gate_id': gate_id,
+             'program': sched_code},
+            ignore_index=True
+        )
 
-        Args:
-            qubit: The qubit upon which the Z instruction will work
-            shift_u_channels: If true the Z instruction will act on the u-channels associated
-                to the qubit.
-        """
-        phase = Parameter('z.d%i' % qubit + '..phase')
-        schedule = Schedule(name='z')
-        channels = set()
-        for ch, qubits in self._channel_map.items():
-            if qubit in qubits:
-                if ch not in channels:
-                    channels.add(ch)
-                    if ch[0] == 'd':
-                        schedule.insert(0, ShiftPhase(phase, DriveChannel(int(ch[1:]))), inplace=True)
-                    if ch[0] == 'u' and shift_u_channels:
-                        schedule.insert(0, ShiftPhase(phase, ControlChannel(int(ch[1:]))), inplace=True)
+        return gate_id
 
-        self._pulse_table.set_parameter((qubit, ), 'd%i'%qubit, 'z', '', 1.0, 'phase', np.pi)
+    def _deduplicate_gate_id(self, gate_name: str, qubits: Tuple[int]) -> str:
+        """A helper function to create unique gate id."""
+        ident = 0
+        while True:
+            base_str = '{0}.{1}:{2}'.format(gate_name, '_'.join(map(str, qubits)), ident)
+            temp_id = hashlib.md5(base_str.encode('utf-8')).hexdigest()[:6]
+            existing_ents = self._find_entries(gate_id=temp_id)
+            # we don't assume there are multiple schedules for single gate
+            if len(existing_ents) == 0:
+                return temp_id
+            ident += 1
 
-        self._instructions[('z', (qubit,))] = schedule
+    def _find_entries(self,
+                      gate_name: Optional[str] = None,
+                      qubits: Optional[Union[int, Tuple[int]]] = None,
+                      gate_id: Optional[str] = None) -> pd.DataFrame:
+        """A helper method to find schedule entry."""
+        query_list = []
 
-    def create_basic_instruction(self, name: str, duration: int, pulse_envelope: ParametricPulse,
-                                 channel: PulseChannel, calibrations: Dict = None):
-        """
-        Creates a basic instruction in the dictionary.
+        # filter by gate name
+        if gate_name:
+            query_list.append('gate_name == "{}"'.format(gate_name))
 
-        Args:
-            name:
-            duration: The duration of the pulse schedule.
-            pulse_envelope: The callable pulse envelope. Its parameters are given by
-                **params after duration is added to it.
-            channel: The channel to which we apply the basic instruction.
-            calibrations: Dictionary with calibrated values for the pulse parameters.
-        """
-        # Avoids having the user manage the parameters.
-        params = self._basic_inst_parameters(name, channel, pulse_envelope)
+        # filter by qubits
+        if qubits is not None:
+            if isinstance(qubits, int):
+                qubits = (qubits, )
+            query_list.append('qubits == tuple({})'.format(str(qubits)))
 
-        if not calibrations:
-            calibrations = {}
+        # filter by schedule unique id
+        if gate_id:
+            query_list.append('gate_id == "{}"'.format(gate_id))
 
-        # Add the parameters with their calibrated values to the table
-        for param_name, param in params.items():
-            self._add_parameter(param, calibrations.get(param_name, None))
+        query_str = ' and '.join(query_list)
 
-        if duration:
-            params['duration'] = duration
-
-        schedule = Schedule(name=name)
-        schedule = schedule.insert(0, Play(pulse_envelope(**params), channel))
-
-        # Identify the qubits concerned by this operation.
-        qubits = self._channel_map[channel.name]
-
-        self._instructions[(name, qubits)] = schedule
-
-    @staticmethod
-    def _basic_inst_parameters(name: str, channel: PulseChannel,
-                               pulse_envelope: ParametricPulse) -> Dict[str, ParameterExpression]:
-        """
-        This functions avoids the user to have to manage parameters and their name.
-
-        TODO Is there a better way of doing this?
-        """
-        pulse_name = pulse_envelope.__name__.lower()
-        params = {}
-        if pulse_envelope.__name__ in ['Drag', 'Gaussian', 'GaussianSquare']:
-            params['amp'] = Parameter(name + '.' + channel.name + '.' + pulse_name + '.amp')
-            params['sigma'] = Parameter(name + '.' + channel.name + '.' + pulse_name + '.sigma')
-
-        if pulse_envelope.__name__ == 'Drag':
-            params['beta'] = Parameter(name + '.' + channel.name + '.' + pulse_name + '.beta')
-
-        if pulse_envelope.__name__ == 'GaussianSquare':
-            params['width'] = Parameter(name + '.' + channel.name + '.' + pulse_name + '.width')
-
-        return params
-
-    def add_composite_instruction(self, name: str, instructions: List[List[Tuple[str, Tuple]]]):
-        """
-        A composite instruction is an instruction that refers to other instructions.
-        It is specified as a list of list where timing barriers are inserted in between
-        lists. All instructions within a sublist are left aligned.
-
-        Args:
-            name: The name of the composite instruction.
-            instructions: List of sub-lists which contain references to
-                instructions as (name, qubits) keys. Here, name is a string and
-                qubits is a tuple. Each instruction is a schedule. All pulses within
-                 a sub-list are left-aligned and form a sub-schedule. Sub-schedules are
-                 inserted one after the other without any time overlap.
-        """
-
-        qubits = set()
-        for inst_list in instructions:
-            for inst_config in inst_list:
-                qubits |= set(inst_config[1])
-
-        self._instructions[(name, tuple(qubits))] = instructions
-
-    def _get_composite_instruction(self, instructions: List[List[Tuple[str, Tuple]]]) -> Schedule:
-        """
-        Recursive function to obtain a schedule.
-        """
-
-        schedule = Schedule()
-        for inst_list in instructions:
-            with pulse.build() as sub_schedule:
-                for inst_config in inst_list:
-                    name = inst_config[0]
-                    qubits = inst_config[1]
-                    inst = self._instructions[(name, qubits)]
-
-                    if not isinstance(inst, Schedule):
-                        sched = self._get_composite_instruction(inst)
-                    else:
-                        sched = inst
-
-                    sub_schedule.append(sched, inplace=True)
-
-            schedule.insert(schedule.duration, sub_schedule, inplace=True)
-
-        return schedule
+        if query_str:
+            return self._instructions.query(query_str)
+        else:
+            return self._instructions
