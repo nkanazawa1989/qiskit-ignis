@@ -149,7 +149,10 @@ class InstructionsDefinition:
                 If None is specified then all parameters will be bound to their
                 calibrated values.
         """
-        schedule = self.get_gate_schedule(gate_name, qubits, free_parameter_names)
+        schedule = self.get_gate_schedule(
+            gate_name=gate_name,
+            qubits=qubits,
+            free_parameter_names=free_parameter_names)
 
         gate = Gate(name=gate_name, num_qubits=len(qubits), params=list(schedule.parameters))
         circ = QuantumCircuit(self._n_qubits)  # Probably a better way of doing this

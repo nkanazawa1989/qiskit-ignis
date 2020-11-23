@@ -185,6 +185,7 @@ class NodeVisitor:
         # TODO remove them
         self._gate_id = None
         self._free_parameters = []
+        self._defined_parameter = dict()
 
     def __call__(self,
                  source: str,
@@ -207,6 +208,7 @@ class NodeVisitor:
         """
         self._gate_id = gate_id
         self._free_parameters = free_parameters or []
+        self._defined_parameter.clear()
 
         return self.visit(parse(source))
 
@@ -226,6 +228,23 @@ class NodeVisitor:
             return channel(index=index)
 
         raise Exception('Channel name {name} is not correct syntax.'.format(name=ch_str))
+
+    def _get_parameter(self, scoped_name: str) -> circuit.Parameter:
+        """A helper function to create parameter. Reuse defined parameter names.
+
+        Args:
+            scoped_name: Parameter name.
+
+        Returns:
+            Qiskit parameter object.
+        """
+        if scoped_name in self._defined_parameter:
+            param_obj = self._defined_parameter[scoped_name]
+        else:
+            param_obj = circuit.Parameter(scoped_name)
+            self._defined_parameter[scoped_name] = param_obj
+
+        return param_obj
 
     def visit(self, node):
         """Visit a node."""
@@ -261,7 +280,7 @@ class NodeVisitor:
             if param_val is not None and scoped_pname not in self._free_parameters:
                 parametric_pulse_kwargs[pname] = param_val
             else:
-                parametric_pulse_kwargs[pname] = circuit.Parameter(scoped_pname)
+                parametric_pulse_kwargs[pname] = self._get_parameter(scoped_pname)
 
         # pulse name for visualization purpose
         pulse_name = '{}.{}.{}'.format(node.name, node.channel, self._gate_id)
