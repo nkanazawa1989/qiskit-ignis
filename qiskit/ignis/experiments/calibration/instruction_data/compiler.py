@@ -22,7 +22,7 @@ from qiskit.ignis.experiments.calibration.instruction_data import utils
 
 
 class TokenSpec(Enum):
-    """Map the AST node name to the DSL syntax.
+    """Map the Abstract Syntax Tree (AST) node name to the calibration schedule Domain Specific Language (DSL) syntax.
 
     The enum name is the AST node type, the value is its mapping to the DSL syntax.
     """
