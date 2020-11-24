@@ -296,7 +296,7 @@ class NodeVisitor:
         )
 
     def visit_ScheduleBlock(self, node: ScheduleBlock) -> pulse.Schedule:
-        """Evaluate schedule block node and return arbitrary schedule.
+        """Return the pulse Schedule defined by the input ScheduleBlock.
 
         Args:
             node: Schedule block node to evaluate.
