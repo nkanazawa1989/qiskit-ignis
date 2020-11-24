@@ -190,7 +190,7 @@ class InstructionsDefinition:
         Returns:
             schedule for the given input.
         """
-        matched_entries = self._find_entries(gate_name, qubits, gate_id)
+        matched_entries = self._find_schedules(gate_name, qubits, gate_id)
 
         if len(matched_entries) > 1:
             raise Exception('Multiple entries are found. Database may be broken.')
@@ -241,16 +241,16 @@ class InstructionsDefinition:
         while True:
             base_str = '{0}.{1}:{2}'.format(gate_name, '_'.join(map(str, qubits)), ident)
             temp_id = hashlib.md5(base_str.encode('utf-8')).hexdigest()[:6]
-            existing_ents = self._find_entries(gate_id=temp_id)
+            existing_ents = self._find_schedules(gate_id=temp_id)
             # we don't assume there are multiple schedules for single gate
             if len(existing_ents) == 0:
                 return temp_id
             ident += 1
 
-    def _find_entries(self,
-                      gate_name: Optional[str] = None,
-                      qubits: Optional[Union[int, Tuple[int]]] = None,
-                      gate_id: Optional[str] = None) -> pd.DataFrame:
+    def _find_schedules(self,
+                        gate_name: Optional[str] = None,
+                        qubits: Optional[Union[int, Tuple[int]]] = None,
+                        gate_id: Optional[str] = None) -> pd.DataFrame:
         """A helper method to find schedule entry."""
         query_list = []
 

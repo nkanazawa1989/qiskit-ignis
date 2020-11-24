@@ -14,6 +14,7 @@
 
 import dataclasses
 import re
+from abc import ABCMeta
 from enum import Enum
 from typing import List, Dict, NamedTuple, Iterator, Union, Optional
 
@@ -67,7 +68,7 @@ def _tokenizer(source: str) -> Iterator[Token]:
 #
 
 @dataclasses.dataclass(frozen=True)
-class Inst:
+class Inst(metaclass=ABCMeta):
     """A base class of instruction. This class is meant to be subclassed."""
     name: str
 
