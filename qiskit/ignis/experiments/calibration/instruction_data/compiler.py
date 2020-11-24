@@ -103,7 +103,7 @@ class Reference(Inst):
 
 @dataclasses.dataclass
 class ScheduleBlock:
-    """A node that represents a block of schedule components."""
+    """A node that represents a block of schedule components, left-aligned by default."""
     context_type: str = 'left'
     children: List[Union[Inst, 'ScheduleBlock']] = dataclasses.field(default_factory=list)
 
@@ -316,7 +316,7 @@ class NodeVisitor:
         )
 
     def visit_ScheduleBlock(self, node: ScheduleBlock) -> pulse.Schedule:
-        """Evaluate schedule block node and return arbitrary schedule.
+        """Return the pulse Schedule defined by the input ScheduleBlock.
 
         Args:
             node: Schedule block node to evaluate.
