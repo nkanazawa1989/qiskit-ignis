@@ -102,7 +102,7 @@ class Reference(Inst):
 
 @dataclasses.dataclass
 class ScheduleBlock:
-    """A node that represents a block of schedule components."""
+    """A node that represents a block of schedule components, left-aligned by default."""
     context_type: str = 'left'
     children: List[Union[Inst, 'ScheduleBlock']] = dataclasses.field(default_factory=list)
 
