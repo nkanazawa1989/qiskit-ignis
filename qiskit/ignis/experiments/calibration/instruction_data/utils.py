@@ -14,38 +14,13 @@
 
 import inspect
 import re
-from enum import Enum
 from typing import Dict, List
 
 from qiskit import pulse
 
 
-class ParametricPulseShapes(Enum):
-    """Map the pulse shape name to the pulse module waveforms.
-
-    The enum name is the DSL name for pulse shapes, the
-    value is its mapping to the OpenPulse Command in Qiskit.
-    """
-    gaus = pulse.Gaussian
-    gaus_sq = pulse.GaussianSquare
-    drag = pulse.Drag
-    constant = pulse.Constant
-
-
-class ChannelPrefixes(Enum):
-    """Map the pulse channel name to the pulse module channel object.
-
-    The enum name is the channel prefix, the
-    value is its mapping to the OpenPulse Channel in Qiskit.
-    """
-    d = pulse.DriveChannel
-    u = pulse.ControlChannel
-    m = pulse.MeasureChannel
-    a = pulse.AcquireChannel
-
-
-def add_scope(name: str, channel: str, pulse_name: str) -> str:
-    """Add scope to parameter name.
+def composite_param_name(name: str, channel: str, pulse_name: str) -> str:
+    """Embed pulse information to parameter name.
 
     Args:
         name: Name of parameter.
@@ -58,8 +33,8 @@ def add_scope(name: str, channel: str, pulse_name: str) -> str:
     return '{}.{}.{}'.format(pulse_name, channel, name)
 
 
-def remove_scope(param_name: str) -> Dict[str, str]:
-    """Remove scope from parameter name.
+def split_param_name(param_name: str) -> Dict[str, str]:
+    """Remove pulse information from parameter name.
 
     Args:
         param_name: Scoped name of parameter.
@@ -67,14 +42,14 @@ def remove_scope(param_name: str) -> Dict[str, str]:
     Returns:
           Name of parameter with scope.
     """
-    scope_regex = r'(?P<pulse>(\w+)).(?P<chan>([a-zA-Z]+)(\d+)).(?P<name>(\w+))'
+    name_regex = r'(?P<pulse>(\w+)).(?P<chan>([a-zA-Z]+)(\d+)).(?P<name>(\w+))'
 
-    matched = re.match(scope_regex, param_name)
+    matched = re.match(name_regex, param_name)
     if matched:
         return {
-            'pulse_name': matched.group('pulse'),
+            'name': matched.group('name'),
             'channel': matched.group('chan'),
-            'name': matched.group('name')
+            'pulse_name': matched.group('pulse')
         }
 
     raise Exception('Invalid parameter name {pname}'.format(pname=param_name))

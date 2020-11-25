@@ -13,6 +13,7 @@
 """User interface of database."""
 
 import hashlib
+from abc import ABCMeta
 from enum import Enum
 from typing import Dict, Union, List, Tuple, Optional
 
@@ -35,38 +36,55 @@ class InstructionsDefinition:
     then leverage the quantum circuit compose operation to compose more complex
     circuits from basic circuits.
     """
-    TABLE_COLS = ['gate_name', 'qubits', 'signature', 'gate_id', 'program']
+    TABLE_COLS = ['gate_name', 'qubits', 'signature', 'program']
 
     def __init__(self,
                  backend_name: str,
                  n_qubits: int,
                  channel_qubit_map: Dict[str, Tuple[int]],
+                 instructions: Optional[pd.DataFrame] = None,
                  pulse_table: Optional[PulseParameterTable] = None,
-                 parametric_shapes: Optional[Enum] = None,
-                 pulse_channels: Optional[Enum] = None):
+                 parametric_shapes: Dict[str, ABCMeta] = None):
         """
         Args:
-            backend: The backend for which the instructions are defined.
+            backend_name: The backend name for which the instructions are defined.
+            n_qubits: Number of qubits in the target system.
+            channel_qubit_map: A map from channel name string to qubit index tuple.
+            instructions: Instruction data to initialize the InstructionDefinition.
+            pulse_table: Pulse parameters to initialize the InstructionDefinition.
+            parametric_shapes: A map from pulse type to ParametricPulse class.
+                User can define arbitrary pulse types. For example::
+
+                    {
+                        'pulse1q': pulse.Drag,
+                        'cr_tone': pulse.GaussianSquare,
+                        'rotary_tone': pulse.GaussianSquare,
+                        'meas_tone': pulse.GaussianSquare
+                    }
+
+                User can later update the value of this dictionary to
+                use another pulse shape to implement the same gate instruction.
         """
+        self.backend_name = backend_name
+        self._n_qubits = n_qubits
 
         # Dict to store the instructions we are calibrating
-        self._instructions = pd.DataFrame(index=[], columns=InstructionsDefinition.TABLE_COLS)
+        if instructions:
+            self._instructions = instructions
+        else:
+            self._instructions = pd.DataFrame(index=[], columns=InstructionsDefinition.TABLE_COLS)
 
         # Table to store the calibrated pulse parameters
-        self.backend_name = backend_name
-
         if pulse_table:
             self._pulse_table = pulse_table
         else:
             self._pulse_table = PulseParameterTable(channel_qubit_map=channel_qubit_map)
 
-        self._n_qubits = n_qubits
-
-        self._parametric_shapes = parametric_shapes or utils.ParametricPulseShapes
-        self._pulse_channels = pulse_channels or utils.ChannelPrefixes
+        # Reserved words to class mapping
+        self._parametric_shapes = parametric_shapes or dict()
 
         # parameter set used to construct schedule
-        self._series = 'default'
+        self._calibration_group = 'default'
 
     @classmethod
     def from_backend(cls, backend: BaseBackend) -> 'InstructionsDefinition':
@@ -102,24 +120,22 @@ class InstructionsDefinition:
         #     pulse_table=pulse_table)
 
     @property
-    def parametric_shapes(self) -> Enum:
-        """Return the definition of parametric pulses."""
+    def parametric_shapes(self) -> Dict[str, ABCMeta]:
+        """Return the definition of parametric pulses.
+
+        This returns mutable dictionary so that user can overwrite shape definition.
+        """
         return self._parametric_shapes
 
     @property
-    def pulse_channels(self) -> Enum:
-        """Return the definition of pulse channels."""
-        return self._pulse_channels
-
-    @property
-    def series(self) -> str:
+    def calibration_group(self) -> str:
         """Return the current data series to construct gate schedule."""
-        return self._series
+        return self._calibration_group
 
-    @series.setter
-    def series(self, new_series):
+    @calibration_group.setter
+    def calibration_group(self, new_group_name: str):
         """Set new series name."""
-        self._series = new_series
+        self._calibration_group = new_group_name
 
     @property
     def instructions(self) -> pd.DataFrame:
@@ -149,7 +165,7 @@ class InstructionsDefinition:
                 If None is specified then all parameters will be bound to their
                 calibrated values.
         """
-        schedule = self.get_gate_schedule(
+        schedule = self.get_schedule(
             gate_name=gate_name,
             qubits=qubits,
             free_parameter_names=free_parameter_names)
@@ -161,20 +177,47 @@ class InstructionsDefinition:
 
         return circ
 
-    def add_gate_schedule(self,
-                          gate_name: str,
-                          qubits: Union[int, Tuple[int]],
-                          signature: List[str],
-                          schedule: Schedule):
+    def define_pulse(
+            self,
+            parameters: Dict[str, Union[int, float, complex]],
+            pulse_name: str,
+            channel: str,
+            gate_name: str,
+            qubits: Union[int, Tuple[int]]
+    ):
+        """Add basis pulse to parameter table. This is usually used to initialize pulse.
+
+        Args:
+            parameters: Dictionary of parameters to compose the pulse.
+            pulse_name: Name of pulse.
+            channel: Channel to play the pulse.
+            gate_name: Name of gate that the pulse belongs to.
+            qubits: Associated qubit index that the gate is applied.
+        """
+        for pname, value in parameters.items():
+            composite_name = utils.composite_param_name(name=pname,
+                                                        channel=channel,
+                                                        pulse_name=pulse_name)
+            self._pulse_table.set_parameter(
+                parameter=composite_name,
+                scope_id=self._get_scope_id(gate_name, qubits),
+                value=value,
+                calibration_group=self.calibration_group
+            )
+
+    def add_schedule(self,
+                     gate_name: str,
+                     qubits: Union[int, Tuple[int]],
+                     signature: List[str],
+                     schedule: Schedule):
         """"""
         # TODO implement this
         raise NotImplementedError
 
-    def get_gate_schedule(self,
-                          gate_name: Optional[str] = None,
-                          qubits: Optional[Union[int, Tuple[int]]] = None,
-                          gate_id: Optional[str] = None,
-                          free_parameter_names: Optional[List[str]] = None) -> Schedule:
+    def get_schedule(self,
+                     gate_name: Optional[str] = None,
+                     qubits: Optional[Union[int, Tuple[int]]] = None,
+                     free_parameter_names: Optional[List[str]] = None) -> Schedule:
         """
         Retrieves a schedule from the instructions data frame.
 
@@ -183,31 +226,27 @@ class InstructionsDefinition:
         Args:
             gate_name: Name of the schedule to retrive.
             qubits: qubits for which to get the schedule.
-            gate_id: Unique id of target schedule.
             free_parameter_names: List of parameter names that will be left unassigned.
                 The parameter assignment is done by querying the pulse parameter table.
 
         Returns:
             schedule for the given input.
         """
-        matched_entries = self._find_schedules(gate_name, qubits, gate_id)
-
-        if len(matched_entries) > 1:
-            raise Exception('Multiple entries are found. Database may be broken.')
+        scope_id = self._get_scope_id(gate_name, qubits)
 
         program_parser = compiler.NodeVisitor(self)
 
         return program_parser(
-            source=matched_entries.iloc[0].program,
-            gate_id=matched_entries.iloc[0].gate_id,
+            source=self._instructions.loc[scope_id].program,
+            scope_id=scope_id,
             free_parameters=free_parameter_names
         )
 
-    def _add_gate_schedule(self,
-                           gate_name: str,
-                           qubits: Union[int, Tuple[int]],
-                           signature: List[str],
-                           sched_code: str) -> str:
+    def _add_schedule(self,
+                      gate_name: str,
+                      qubits: Union[int, Tuple[int]],
+                      signature: List[str],
+                      sched_code: str) -> str:
         """A helper function to add new gate schedule to the database.
 
         Args:
@@ -222,35 +261,61 @@ class InstructionsDefinition:
         if isinstance(qubits, int):
             qubits = (qubits, )
 
-        gate_id = self._deduplicate_gate_id(gate_name, qubits)
+        scope_id = self._deduplicate_scope_id(gate_name, qubits)
 
-        self._instructions = self._instructions.append(
-            {'gate_name': gate_name,
-             'qubits': qubits,
-             'signature': signature,
-             'gate_id': gate_id,
-             'program': sched_code},
-            ignore_index=True
-        )
+        if scope_id in self._instructions.index.to_list():
+            # overwrite old entry
+            self._instructions.loc[scope_id].signature = signature
+            self._instructions.loc[scope_id].program = sched_code
+        else:
+            # add new entry
+            new_ent = pd.Series([gate_name, qubits, signature, sched_code],
+                                index=self._instructions.columns,
+                                name=scope_id)
+            self._instructions = self._instructions.append(new_ent)
 
-        return gate_id
+        return scope_id
 
-    def _deduplicate_gate_id(self, gate_name: str, qubits: Tuple[int]) -> str:
+    def _deduplicate_scope_id(self, gate_name: str, qubits: Tuple[int]) -> str:
         """A helper function to create unique gate id."""
         ident = 0
         while True:
             base_str = '{0}.{1}:{2}'.format(gate_name, '_'.join(map(str, qubits)), ident)
             temp_id = hashlib.md5(base_str.encode('utf-8')).hexdigest()[:6]
-            existing_ents = self._find_schedules(gate_id=temp_id)
-            # we don't assume there are multiple schedules for single gate
-            if len(existing_ents) == 0:
+            try:
+                existing_ents = self._instructions.loc[temp_id]
+                if existing_ents.gate_name == gate_name and existing_ents.qubits == qubits:
+                    # same entry
+                    return existing_ents.name
+                else:
+                    # hash collision
+                    ident += 1
+            except KeyError:
+                # unassigned id
                 return temp_id
-            ident += 1
+
+    def _get_scope_id(self,
+                      gate_name: str,
+                      qubits: Union[int, Tuple[int]]) -> str:
+        """A helper function to get scope id from the gate name and qubits.
+
+        If gate is not stored in the database this causes an error.
+
+        Args:
+            gate_name: Gate name of this entry.
+            qubits: Qubit associated with this gate.
+        """
+        matched_entries = self._find_schedules(gate_name=gate_name, qubits=qubits)
+
+        if len(matched_entries) > 1:
+            raise Exception('Multiple entries are found. Database may be broken.')
+
+        return matched_entries.iloc[0].name
 
     def _find_schedules(self,
                         gate_name: Optional[str] = None,
-                        qubits: Optional[Union[int, Tuple[int]]] = None,
-                        gate_id: Optional[str] = None) -> pd.DataFrame:
+                        qubits: Optional[Union[int, Tuple[int]]] = None
+                        ) -> pd.DataFrame:
         """A helper method to find schedule entry."""
         query_list = []
 
@@ -263,10 +328,6 @@ class InstructionsDefinition:
             if isinstance(qubits, int):
                 qubits = (qubits, )
             query_list.append('qubits == tuple({})'.format(str(qubits)))
-
-        # filter by schedule unique id
-        if gate_id:
-            query_list.append('gate_id == "{}"'.format(gate_id))
 
         query_str = ' and '.join(query_list)
 

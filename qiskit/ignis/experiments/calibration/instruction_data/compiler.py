@@ -16,10 +16,25 @@ import dataclasses
 import re
 from abc import ABCMeta
 from enum import Enum
-from typing import List, Dict, NamedTuple, Iterator, Union, Optional
+from typing import List, Dict, NamedTuple, Iterator, Union, Optional, Tuple
 
 from qiskit import pulse, circuit
 from qiskit.ignis.experiments.calibration.instruction_data import utils
+
+
+#
+# Definitions
+#
+
+class OpenPulseChannels(Enum):
+    """Map the channel name prefix to Qiskit Channel object.
+
+    The enum name is the channel prefix, the value is its mapping to the class.
+    """
+    d = pulse.DriveChannel
+    u = pulse.ControlChannel
+    m = pulse.MeasureChannel
+    a = pulse.AcquireChannel
 
 
 class TokenSpec(Enum):
@@ -29,8 +44,8 @@ class TokenSpec(Enum):
     """
     CONTEXT_ENTER = r'\[(?P<pos>right|left|seq)\]{'
     CONTEXT_EXIT = r'}'
-    REFERENCE = r'&(?P<name>[\w]*)'
-    PULSE = r'%(?P<name>[\w]*)\((?P<channel>[a-z][0-9]+),(?P<shape>[\w]*)\)'
+    REFERENCE = r'%(?P<name>[\w]*)\((?P<qubits>[0-9,]+)\)'
+    PULSE = r'%(?P<name>[\w]*).(?P<channel>[a-z][0-9]+).(?P<type>[\w]*)'
     FRAME = r'$(?P<name>[\w]*)\((?P<channel>[a-z][0-9]+),(?P<operand>[0-9.]+)\)'
 
 
@@ -77,10 +92,10 @@ class Inst(metaclass=ABCMeta):
 class PulseInst(Inst):
     """A leaf that represents a play schedule component."""
     channel: str
-    shape: str
+    type: str
 
     def __repr__(self):
-        return 'Pulse({}.{}.{})'.format(self.name, self.channel, self.shape)
+        return 'Pulse({}.{})'.format(self.name, self.channel)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -96,9 +111,10 @@ class FrameInst(Inst):
 @dataclasses.dataclass(frozen=True)
 class Reference(Inst):
     """A leaf that represents a reference to another schedule definition."""
+    qubits: Tuple[int]
 
     def __repr__(self):
-        return 'Ref({})'.format(self.name)
+        return 'Ref({}:{})'.format(self.name, ','.join(map(str, self.qubits)))
 
 
 @dataclasses.dataclass
@@ -161,7 +177,8 @@ def _parse_node(token: Token) -> Inst:
         return FrameInst(**token.data)
     # reference
     if token.type == TokenSpec.REFERENCE.name:
-        return Reference(**token.data)
+        qubits = tuple(map(int, token.data['qubits'].split(',')))
+        return Reference(name=token.data['name'], qubits=qubits)
 
     raise Exception('Invalid token {token} is specified as instruction.'.format(token=token.type))
 
@@ -184,13 +201,13 @@ class NodeVisitor:
 
         # these parameters are set on the fly
         # TODO remove them
-        self._gate_id = None
+        self._scope_id = None
         self._free_parameters = []
         self._defined_parameter = dict()
 
     def __call__(self,
                  source: str,
-                 gate_id: str,
+                 scope_id: str,
                  free_parameters: Optional[List[str]] = None) -> pulse.Schedule:
         """Parse source code and return Schedule.
 
@@ -207,7 +224,7 @@ class NodeVisitor:
         Returns:
             Pulse schedule object.
         """
-        self._gate_id = gate_id
+        self._scope_id = scope_id
         self._free_parameters = free_parameters or []
         self._defined_parameter.clear()
 
@@ -225,7 +242,8 @@ class NodeVisitor:
         match = self.chan_regex.match(ch_str)
         if match:
             prefix, index = match.group(1), int(match.group(2))
-            channel = self._inst_def.pulse_channels[prefix].value
+            channel = OpenPulseChannels[prefix].value
+
             return channel(index=index)
 
         raise Exception('Channel name {name} is not correct syntax.'.format(name=ch_str))
@@ -263,28 +281,34 @@ class NodeVisitor:
         Returns:
             Play instruction.
         """
-        parametric_pulse = self._inst_def.parametric_shapes[node.shape].value
+        # get defined pulse shape for detected pulse type
+        try:
+            parametric_pulse = self._inst_def.parametric_shapes[node.type]
+        except KeyError:
+            raise Exception('Shape for pulse type {} is not defined.'.format(node.type))
 
         # generate parameter names on the fly
         parametric_pulse_kwargs = dict()
         for pname in utils.get_pulse_parameters(parametric_pulse):
-            scoped_pname = utils.add_scope(pname, node.channel, node.name)
+            composite_name = utils.composite_param_name(name=pname,
+                                                        channel=node.channel,
+                                                        pulse_name=node.name)
             # TODO calling parameter biding here is bit strange.
             # This parameter binding should be offloaded to the get_gate_schedule method.
             # However, we cannot do this now because of parametrization of duration.
             # The role of parser is to create program, not the parameter-bound schedule.
             param_val = self._inst_def.pulse_parameter_table.get_parameter(
-                parameter=scoped_pname,
-                gate_id=self._gate_id,
-                series=self._inst_def.series
+                parameter=composite_name,
+                scope_id=self._scope_id,
+                calibration_group=self._inst_def.calibration_group
             )
-            if param_val is not None and scoped_pname not in self._free_parameters:
+            if param_val is not None and composite_name not in self._free_parameters:
                 parametric_pulse_kwargs[pname] = param_val
             else:
-                parametric_pulse_kwargs[pname] = self._get_parameter(scoped_pname)
+                parametric_pulse_kwargs[pname] = self._get_parameter(composite_name)
 
         # pulse name for visualization purpose
-        pulse_name = '{}.{}.{}'.format(node.name, node.channel, self._gate_id)
+        pulse_name = '{}.{}.{}'.format(node.name, node.channel, self._scope_id)
         played_pulse = parametric_pulse(**parametric_pulse_kwargs, name=pulse_name)
         channel = self._get_channel(node.channel)
 
@@ -310,8 +334,9 @@ class NodeVisitor:
         Returns:
             Arbitrary schedule from another schedule database entry.
         """
-        return self._inst_def.get_gate_schedule(
-            gate_id=node.name,
+        return self._inst_def.get_schedule(
+            gate_name=node.name,
+            qubits=node.qubits,
             free_parameter_names=self._free_parameters
         )
 
