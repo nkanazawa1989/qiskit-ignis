@@ -37,6 +37,18 @@ class OpenPulseChannels(Enum):
     a = pulse.AcquireChannel
 
 
+class ParametricPulseShapes(Enum):
+    """Map the pulse shape name to the pulse module waveforms.
+
+    The enum name is the DSL name for pulse shapes, the
+    value is its mapping to the OpenPulse Command in Qiskit.
+    """
+    gaus = pulse.Gaussian
+    gaus_sq = pulse.GaussianSquare
+    drag = pulse.Drag
+    constant = pulse.Constant
+
+
 class TokenSpec(Enum):
     """Map the Abstract Syntax Tree (AST) node name to the calibration schedule Domain Specific Language (DSL) syntax.
 
@@ -45,7 +57,7 @@ class TokenSpec(Enum):
     CONTEXT_ENTER = r'\[(?P<pos>right|left|seq)\]{'
     CONTEXT_EXIT = r'}'
     REFERENCE = r'%(?P<name>[\w]*)\((?P<qubits>[0-9,]+)\)'
-    PULSE = r'%(?P<name>[\w]*).(?P<channel>[a-z][0-9]+).(?P<type>[\w]*)'
+    PULSE = r'%(?P<name>[\w]*).(?P<channel>[a-z][0-9]+)'
     FRAME = r'$(?P<name>[\w]*)\((?P<channel>[a-z][0-9]+),(?P<operand>[0-9.]+)\)'
 
 
@@ -92,7 +104,6 @@ class Inst(metaclass=ABCMeta):
 class PulseInst(Inst):
     """A leaf that represents a play schedule component."""
     channel: str
-    type: str
 
     def __repr__(self):
         return 'Pulse({}.{})'.format(self.name, self.channel)
@@ -202,12 +213,14 @@ class NodeVisitor:
         # these parameters are set on the fly
         # TODO remove them
         self._scope_id = None
+        self._calibration_group = None
         self._free_parameters = []
         self._defined_parameter = dict()
 
     def __call__(self,
                  source: str,
                  scope_id: str,
+                 calibration_group: str,
                  free_parameters: Optional[List[str]] = None) -> pulse.Schedule:
         """Parse source code and return Schedule.
 
@@ -225,6 +238,7 @@ class NodeVisitor:
             Pulse schedule object.
         """
         self._scope_id = scope_id
+        self._calibration_group = calibration_group
         self._free_parameters = free_parameters or []
         self._defined_parameter.clear()
 
@@ -248,20 +262,20 @@ class NodeVisitor:
 
         raise Exception('Channel name {name} is not correct syntax.'.format(name=ch_str))
 
-    def _get_parameter(self, scoped_name: str) -> circuit.Parameter:
+    def _get_parameter(self, composite_name: str) -> circuit.Parameter:
         """A helper function to create parameter. Reuse defined parameter names.
 
         Args:
-            scoped_name: Parameter name.
+            composite_name: Parameter name.
 
         Returns:
             Qiskit parameter object.
         """
-        if scoped_name in self._defined_parameter:
-            param_obj = self._defined_parameter[scoped_name]
+        if composite_name in self._defined_parameter:
+            param_obj = self._defined_parameter[composite_name]
         else:
-            param_obj = circuit.Parameter(scoped_name)
-            self._defined_parameter[scoped_name] = param_obj
+            param_obj = circuit.Parameter(composite_name)
+            self._defined_parameter[composite_name] = param_obj
 
         return param_obj
 
@@ -281,26 +295,32 @@ class NodeVisitor:
         Returns:
             Play instruction.
         """
-        # get defined pulse shape for detected pulse type
-        try:
-            parametric_pulse = self._inst_def.parametric_shapes[node.type]
-        except KeyError:
-            raise Exception('Shape for pulse type {} is not defined.'.format(node.type))
+        # get pulse shape
+        shape = self._inst_def.pulse_parameter_table.get_pulse_shape(
+            pulse_name=node.name,
+            channel=node.channel,
+            scope_id=self._scope_id,
+            calibration_group=self._calibration_group
+        )
+        parametric_pulse = self._inst_def.parametric_shapes[shape].value
 
         # generate parameter names on the fly
         parametric_pulse_kwargs = dict()
         for pname in utils.get_pulse_parameters(parametric_pulse):
             composite_name = utils.composite_param_name(name=pname,
                                                         channel=node.channel,
-                                                        pulse_name=node.name)
+                                                        pulse_name=node.name,
+                                                        scope_id=self._scope_id)
             # TODO calling parameter biding here is bit strange.
             # This parameter binding should be offloaded to the get_gate_schedule method.
             # However, we cannot do this now because of parametrization of duration.
             # The role of parser is to create program, not the parameter-bound schedule.
             param_val = self._inst_def.pulse_parameter_table.get_parameter(
-                parameter=composite_name,
+                parameter_name=pname,
+                pulse_name=node.name,
+                channel=node.channel,
                 scope_id=self._scope_id,
-                calibration_group=self._inst_def.calibration_group
+                calibration_group=self._calibration_group
             )
             if param_val is not None and composite_name not in self._free_parameters:
                 parametric_pulse_kwargs[pname] = param_val

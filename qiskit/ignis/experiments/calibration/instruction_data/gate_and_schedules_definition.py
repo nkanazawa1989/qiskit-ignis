@@ -13,7 +13,6 @@
 """User interface of database."""
 
 import hashlib
-from abc import ABCMeta
 from enum import Enum
 from typing import Dict, Union, List, Tuple, Optional
 
@@ -25,7 +24,8 @@ from qiskit.pulse import Schedule
 from qiskit import QuantumCircuit
 from qiskit.ignis.experiments.calibration.instruction_data import compiler
 from qiskit.ignis.experiments.calibration.instruction_data import utils
-from qiskit.ignis.experiments.calibration.instruction_data.parameter_table import PulseParameterTable
+from qiskit.ignis.experiments.calibration.instruction_data.parameter_table import \
+    PulseParameterTable
 
 
 class InstructionsDefinition:
@@ -44,7 +44,7 @@ class InstructionsDefinition:
                  channel_qubit_map: Dict[str, Tuple[int]],
                  instructions: Optional[pd.DataFrame] = None,
                  pulse_table: Optional[PulseParameterTable] = None,
-                 parametric_shapes: Dict[str, ABCMeta] = None):
+                 parametric_shapes: Enum = None):
         """
         Args:
             backend_name: The backend name for which the instructions are defined.
@@ -52,18 +52,7 @@ class InstructionsDefinition:
             channel_qubit_map: A map from channel name string to qubit index tuple.
             instructions: Instruction data to initialize the InstructionDefinition.
             pulse_table: Pulse parameters to initialize the InstructionDefinition.
-            parametric_shapes: A map from pulse type to ParametricPulse class.
-                User can define arbitrary pulse types. For example::
-
-                    {
-                        'pulse1q': pulse.Drag,
-                        'cr_tone': pulse.GaussianSquare,
-                        'rotary_tone': pulse.GaussianSquare,
-                        'meas_tone': pulse.GaussianSquare
-                    }
-
-                User can later update the value of this dictionary to
-                use another pulse shape to implement the same gate instruction.
+            parametric_shapes: A map from pulse name to ParametricPulse class.
         """
         self.backend_name = backend_name
         self._n_qubits = n_qubits
@@ -81,10 +70,7 @@ class InstructionsDefinition:
             self._pulse_table = PulseParameterTable(channel_qubit_map=channel_qubit_map)
 
         # Reserved words to class mapping
-        self._parametric_shapes = parametric_shapes or dict()
-
-        # parameter set used to construct schedule
-        self._calibration_group = 'default'
+        self._parametric_shapes = parametric_shapes or compiler.ParametricPulseShapes
 
     @classmethod
     def from_backend(cls, backend: BaseBackend) -> 'InstructionsDefinition':
@@ -120,22 +106,21 @@ class InstructionsDefinition:
         #     pulse_table=pulse_table)
 
     @property
-    def parametric_shapes(self) -> Dict[str, ABCMeta]:
+    def parametric_shapes(self) -> Enum:
         """Return the definition of parametric pulses.
 
         This returns mutable dictionary so that user can overwrite shape definition.
         """
         return self._parametric_shapes
 
-    @property
-    def calibration_group(self) -> str:
-        """Return the current data series to construct gate schedule."""
-        return self._calibration_group
+    @parametric_shapes.setter
+    def parametric_shapes(self, new_shapes: Enum):
+        """Set new pulse shape mapping.
 
-    @calibration_group.setter
-    def calibration_group(self, new_group_name: str):
-        """Set new series name."""
-        self._calibration_group = new_group_name
+        Args:
+            new_shapes: A map from pulse name to ParametricPulse class.
+        """
+        self._parametric_shapes = new_shapes
 
     @property
     def instructions(self) -> pd.DataFrame:
@@ -147,14 +132,38 @@ class InstructionsDefinition:
         """Returns the table of pulse parameters."""
         return self._pulse_table
 
-    def get_calibration(self):
-        """Returns the calibrations."""
-        return self._pulse_table.filter_data()
+    def calibration_groups(self) -> List[str]:
+        """Return list of calibration groups."""
+        groups = self.get_calibration()['calibration_group'].to_list()
+        return sorted(set(groups))
+
+    def get_calibration(self,
+                        calibration_groups: Optional[Union[str, List[str]]] = None
+                        ) -> pd.DataFrame:
+        """Returns the calibrations.
+
+        Args:
+            calibration_groups: Name of calibration groups to search for.
+
+        Returns:
+            Daraframe object of calibration parameters.
+        """
+        if calibration_groups:
+            if isinstance(calibration_groups, str):
+                calibration_groups = [calibration_groups]
+
+            dfs = []
+            for calibration_group in calibration_groups:
+                dfs.append(self._pulse_table.filter_data(calibration_group=calibration_group))
+            return pd.concat(dfs)
+        else:
+            return self._pulse_table.filter_data()
 
     def get_circuit(self,
                     gate_name: str,
                     qubits: Tuple,
-                    free_parameter_names: List[str] = None) -> QuantumCircuit:
+                    free_parameter_names: List[str] = None,
+                    calibration_group: Optional[str] = 'default') -> QuantumCircuit:
         """
         Wraps the schedule from the instructions table in a quantum circuit.
 
@@ -164,11 +173,16 @@ class InstructionsDefinition:
             free_parameter_names: Names of the parameter that should be left unbound.
                 If None is specified then all parameters will be bound to their
                 calibrated values.
+            calibration_group: Name of calibration. User can define arbitrary name.
+                This name defaults to `default`.
         """
         schedule = self.get_schedule(
             gate_name=gate_name,
             qubits=qubits,
-            free_parameter_names=free_parameter_names)
+            free_parameter_names=free_parameter_names,
+            calibration_group=calibration_group)
+
+        schedule = utils.merge_duplicated_parameters(schedule)
 
         gate = Gate(name=gate_name, num_qubits=len(qubits), params=list(schedule.parameters))
         circ = QuantumCircuit(self._n_qubits)  # Probably a better way of doing this
@@ -182,34 +196,68 @@ class InstructionsDefinition:
             parameters: Dict[str, Union[int, float, complex]],
             pulse_name: str,
             channel: str,
-            gate_name: str,
-            qubits: Union[int, Tuple[int]]
+            pulse_shape: str,
+            gate_name: Optional[str] = None,
+            qubits: Optional[Union[int, Tuple[int]]] = None,
+            calibration_group: str = 'default'
     ):
         """Add basis pulse to parameter table. This is usually used to initialize pulse.
+
+        User can optionally set `gate_name` and `qubits` to define scope of this pulse.
+        If scope is set, this pulse is dedicated to the instruction with specified
+        `gate_name` and `qubits` pair.
 
         Args:
             parameters: Dictionary of parameters to compose the pulse.
             pulse_name: Name of pulse.
             channel: Channel to play the pulse.
+            pulse_shape: Name representing shape of this pulse.
+                This pulse shape should be defined in the :py:meth:`parametric_shapes`.
             gate_name: Name of gate that the pulse belongs to.
+                If this is not specified, global scope id is applied to this pulse.
             qubits: Associated qubit index that the gate is applied.
+                If this is not specified, global scope id is applied to this pulse.
+            calibration_group: Name of calibration. User can define arbitrary name.
+                This name defaults to `default`.
         """
+        # generate scope id from gate name and qubits
+        if gate_name is None or qubits is None:
+            scope_id = 'global'
+        else:
+            scope_id = self.get_scope_id(gate_name, qubits)
+
+        # check pulse shape
+        valid_shapes = self.parametric_shapes.__members__
+        if pulse_shape not in valid_shapes:
+            raise Exception('Pulse shape {} is not defined. Use one of {}.'
+                            ''.format(pulse_shape, ', '.join(valid_shapes.keys())))
+
+        # add pulse shape
+        self._pulse_table.set_pulse_shape(
+            pulse_name=pulse_name,
+            channel=channel,
+            pulse_shape=pulse_shape,
+            scope_id=scope_id,
+            calibration_group=calibration_group
+        )
+
+        # save parameters in the parameter table
         for pname, value in parameters.items():
-            composite_name = utils.composite_param_name(name=pname,
-                                                        channel=channel,
-                                                        pulse_name=pulse_name)
             self._pulse_table.set_parameter(
-                parameter=composite_name,
-                scope_id=self._get_scope_id(gate_name, qubits),
+                parameter_name=pname,
+                pulse_name=pulse_name,
+                channel=channel,
+                scope_id=scope_id,
                 value=value,
-                calibration_group=self.calibration_group
+                calibration_group=calibration_group
             )
 
     def add_schedule(self,
                      gate_name: str,
                      qubits: Union[int, Tuple[int]],
                      signature: List[str],
-                     schedule: Schedule):
+                     schedule: Schedule,
+                     calibration_group: str):
         """"""
         # TODO implement this
         raise NotImplementedError
@@ -217,7 +265,8 @@ class InstructionsDefinition:
     def get_schedule(self,
                      gate_name: Optional[str] = None,
                      qubits: Optional[Union[int, Tuple[int]]] = None,
-                     free_parameter_names: Optional[List[str]] = None) -> Schedule:
+                     free_parameter_names: Optional[List[str]] = None,
+                     calibration_group: str = 'default') -> Schedule:
         """
         Retrieves a schedule from the instructions data frame.
 
@@ -228,19 +277,40 @@ class InstructionsDefinition:
             qubits: qubits for which to get the schedule.
             free_parameter_names: List of parameter names that will be left unassigned.
                 The parameter assignment is done by querying the pulse parameter table.
+            calibration_group: Name of calibration. User can define arbitrary name.
+                This name defaults to `default`.
 
         Returns:
             schedule for the given input.
         """
-        scope_id = self._get_scope_id(gate_name, qubits)
+        scope_id = self.get_scope_id(gate_name, qubits)
 
         program_parser = compiler.NodeVisitor(self)
 
         return program_parser(
             source=self._instructions.loc[scope_id].program,
             scope_id=scope_id,
+            calibration_group=calibration_group,
             free_parameters=free_parameter_names
         )
+
+    def get_scope_id(self,
+                     gate_name: str,
+                     qubits: Union[int, Tuple[int]]) -> str:
+        """A helper function to get scope id from the gate name and qubits.
+
+        If gate is not stored in the database this causes an error.
+
+        Args:
+            gate_name: Gate name of this entry.
+            qubits: Qubit associated with this gate.
+        """
+        matched_entries = self._find_schedules(gate_name=gate_name, qubits=qubits)
+
+        if len(matched_entries) > 1:
+            raise Exception('Multiple entries are found. Database may be broken.')
+
+        return matched_entries.iloc[0].name
 
     def _add_schedule(self,
                       gate_name: str,
@@ -294,24 +364,6 @@ class InstructionsDefinition:
                 # unassigned id
                 return temp_id
 
-    def _get_scope_id(self,
-                      gate_name: str,
-                      qubits: Union[int, Tuple[int]]) -> str:
-        """A helper function to get scope id from the gate name and qubits.
-
-        If gate is not stored in the database this causes an error.
-
-        Args:
-            gate_name: Gate name of this entry.
-            qubits: Qubit associated with this gate.
-        """
-        matched_entries = self._find_schedules(gate_name=gate_name, qubits=qubits)
-
-        if len(matched_entries) > 1:
-            raise Exception('Multiple entries are found. Database may be broken.')
-
-        return matched_entries.iloc[0].name
-
     def _find_schedules(self,
                         gate_name: Optional[str] = None,
                         qubits: Optional[Union[int, Tuple[int]]] = None
@@ -335,3 +387,9 @@ class InstructionsDefinition:
             return self._instructions.query(query_str)
         else:
             return self._instructions
+
+    def __repr__(self):
+        return '{0}(backend={1})'.format(
+            self.__class__.__name__,
+            self.backend_name
+        )

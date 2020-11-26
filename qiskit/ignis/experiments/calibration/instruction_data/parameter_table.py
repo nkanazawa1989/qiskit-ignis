@@ -19,10 +19,8 @@ from typing import Dict, Union, Iterable, Optional, List, Tuple
 
 import pandas as pd
 
-from qiskit import circuit
 from qiskit.ignis.experiments.calibration import types
 from qiskit.ignis.experiments.calibration.exceptions import CalExpError
-from qiskit.ignis.experiments.calibration.instruction_data import utils
 
 
 class PulseParameterTable:
@@ -89,10 +87,12 @@ class PulseParameterTable:
 
     def get_parameter(
             self,
-            parameter: Union[str, circuit.Parameter],
-            scope_id: str,
+            parameter_name: str,
+            pulse_name: str,
+            channel: str,
+            scope_id: Optional[str] = 'global',
             calibration_group: Optional[str] = 'default'
-    ) -> Union[int, float, None]:
+    ) -> Union[int, float, str, None]:
         """Get waveform parameter from the local database.
 
         User need to specify parameter object or scoped parameter name
@@ -104,21 +104,28 @@ class PulseParameterTable:
         instead of parameter value.
 
         Args:
-            parameter: Parameter object or scoped parameter name to get.
+            parameter_name: Parameter name to get.
+            pulse_name: Name of pulse that the parameter is associated with.
+            channel: Name of channel where the pulse is played.
             scope_id: Target scope id string that the pulse belongs to.
             calibration_group: Calibration data set name if multiple sets exist.
 
         Returns:
             A value corresponding to the input parameter.
         """
-        if not isinstance(parameter, str):
-            parameter = parameter.name
-
-        split_pname = utils.split_param_name(parameter)
-
-        matched = self._find_data(**split_pname,
+        matched = self._find_data(name=parameter_name,
+                                  pulse_name=pulse_name,
+                                  channel=channel,
                                   calibration_group=calibration_group,
                                   scope_id=scope_id)
+
+        if len(matched) == 0 and scope_id != 'global':
+            # if that scope is not defined we can take global data set.
+            return self.get_parameter(parameter_name=parameter_name,
+                                      pulse_name=pulse_name,
+                                      channel=channel,
+                                      scope_id='global',
+                                      calibration_group=calibration_group)
 
         # filter out invalid entries
         valid_data = matched.query('validation != "{}"'.format(types.Validation.FAIL.value))
@@ -130,16 +137,18 @@ class PulseParameterTable:
         df_idx = valid_data['timestamp'].idxmax()
         pval = matched.loc[df_idx].value
 
-        if split_pname['name'] == 'duration':
+        if parameter_name == 'duration':
             return int(pval)
         else:
             return pval
 
     def set_parameter(
             self,
-            parameter: Union[str, circuit.Parameter],
-            scope_id: str,
-            value: Union[int, float],
+            parameter_name: str,
+            pulse_name: str,
+            channel: str,
+            value: Union[int, float, str],
+            scope_id: Optional[str] = 'global',
             validation: Optional[str] = None,
             timestamp: Optional[pd.Timestamp] = None,
             exp_id: Optional[str] = None,
@@ -149,7 +158,9 @@ class PulseParameterTable:
         add the result of calibration experiment.
 
         Args:
-            parameter: Parameter object or scoped parameter name to set.
+            parameter_name: Parameter name to get.
+            pulse_name: Name of pulse that the parameter is associated with.
+            channel: Name of channel where the pulse is played.
             scope_id: Target scope id string that the pulse belongs to.
             value: Calibrated parameter value.
             validation: Validation status. Defaults to `None`.
@@ -157,19 +168,24 @@ class PulseParameterTable:
             exp_id: String representing the id of experiment that calibrated this parameter.
             calibration_group: Calibration data set name if multiple sets exist.
         """
-        if not isinstance(parameter, str):
-            parameter = parameter.name
-
-        split_pname = utils.split_param_name(parameter)
+        # use special function if parameter is pulse shape
+        if parameter_name == 'shape':
+            self.set_pulse_shape(
+                pulse_name=pulse_name,
+                channel=channel,
+                pulse_shape=value,
+                scope_id=scope_id,
+                calibration_group=calibration_group
+            )
 
         # add new data
         self._parameter_collection = self._parameter_collection.append(
-            {'qubits': self._channel_qubit_map[split_pname['channel']],
-             'channel': split_pname['channel'],
-             'pulse_name': split_pname['pulse_name'],
+            {'qubits': self._channel_qubit_map[channel],
+             'channel': channel,
+             'pulse_name': pulse_name,
              'calibration_group': calibration_group,
              'scope_id': scope_id,
-             'name': split_pname['name'],
+             'name': parameter_name,
              'value': value,
              'validation': validation or types.Validation.NONE.value,
              'timestamp': timestamp or pd.Timestamp.now(),
@@ -202,6 +218,86 @@ class PulseParameterTable:
             raise CalExpError('Data index {index} does not exist'.format(index=data_index))
 
         self._parameter_collection.at[data_index, 'validation'] = status
+
+    def get_pulse_shape(
+            self,
+            pulse_name: str,
+            channel: str,
+            scope_id: Optional[str] = None,
+            calibration_group: Optional[str] = 'default'
+    ) -> str:
+        """A special method to get pulse shape in the database.
+
+        Args:
+            pulse_name: Name of target pulse.
+            channel: Channel name where pulse is played.
+            scope_id: The scope id of pulse where pulse belongs to.
+            calibration_group: The name of calibration.
+
+        Returns:
+            Name of pulse shape.
+        """
+        return self.get_parameter(
+            parameter_name='shape',
+            pulse_name=pulse_name,
+            channel=channel,
+            scope_id=scope_id,
+            calibration_group=calibration_group)
+
+    def set_pulse_shape(
+            self,
+            pulse_name: str,
+            channel: str,
+            pulse_shape: str,
+            scope_id: Optional[str] = None,
+            calibration_group: Optional[str] = 'default'
+    ):
+        """A special method to save pulse shape in the database.
+
+        Pulse shape is also handled as a parameter in the calibration module.
+        To ensure calibration data consistency with pulse shape,
+        the `shape` parameter can be defined once for each calibration group.
+        To define new pulse shape for the same scope user need to create
+        another calibration group.
+
+        Args:
+            pulse_name: Name of target pulse.
+            channel: Channel name where pulse is played.
+            pulse_shape: Name of pulse shape.
+            scope_id: The scope id of pulse where pulse belongs to.
+            calibration_group: The name of calibration.
+        """
+        scope_id = scope_id or 'global'
+
+        # duplication check
+        existing_entry = self._find_data(
+            channel=channel,
+            pulse_name=pulse_name,
+            calibration_group=calibration_group,
+            scope_id=scope_id,
+            name='shape'
+        )
+
+        if len(existing_entry) > 0:
+            raise Exception('Pulse shape for {0} of calibration group {1} '
+                            'is already defined. Create another group to define '
+                            'new pulse shape.'.format(scope_id, calibration_group))
+
+        # add new data
+        self._parameter_collection = self._parameter_collection.append(
+            {'qubits': self._channel_qubit_map[channel],
+             'channel': channel,
+             'pulse_name': pulse_name,
+             'calibration_group': calibration_group,
+             'scope_id': scope_id,
+             'name': 'shape',
+             'value': pulse_shape,
+             'validation': types.Validation.NONE.value,
+             'timestamp': pd.Timestamp.now(),
+             'exp_id': None
+             },
+            ignore_index=True
+        )
 
     def _find_data(
             self,
