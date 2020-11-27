@@ -57,7 +57,7 @@ class SingleQubitPulses(Enum):
     STIM = 'stimulus'
 
 
-class ValidationStatus(Enum):
+class Validation(Enum):
     """Valid validation status."""
     PASS = 'pass'
     FAIL = 'fail'

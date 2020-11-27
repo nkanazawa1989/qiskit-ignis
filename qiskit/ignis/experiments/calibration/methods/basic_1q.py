@@ -21,7 +21,7 @@ from qiskit.ignis.experiments.calibration import (types,
                                                   generators,
                                                   workflow,
                                                   Calibration1DAnalysis)
-from qiskit.ignis.experiments.calibration.instruction_data.database import PulseTable
+from qiskit.ignis.experiments.calibration.instruction_data.parameter_table import PulseParameterTable
 from qiskit.ignis.experiments.calibration.cal_base_experiment import BaseCalibrationExperiment
 from qiskit.ignis.experiments.calibration.analysis.peak import GaussianFit
 from qiskit.ignis.experiments.calibration.analysis.trigonometric import CosinusoidalFit
@@ -31,7 +31,7 @@ class RoughSpectroscopy(BaseCalibrationExperiment):
     """Performs a frequency spectroscopy by scanning the drive channel frequency."""
 
     def __init__(self,
-                 table: PulseTable,
+                 table: PulseParameterTable,
                  qubit: int,
                  data_processing: workflow.DataProcessingSteps,
                  freq_vals: np.ndarray,
@@ -87,7 +87,7 @@ class RoughAmplitudeCalibration(BaseCalibrationExperiment):
     """Performs a rough amplitude calibration by scanning the amplitude of the pulse."""
 
     def __init__(self,
-                 table: PulseTable,
+                 table: PulseParameterTable,
                  qubit: int,
                  data_processing: workflow.DataProcessingSteps,
                  amp_vals: np.ndarray,
