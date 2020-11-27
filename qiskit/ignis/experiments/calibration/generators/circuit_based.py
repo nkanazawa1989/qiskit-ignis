@@ -1,4 +1,4 @@
-form typing import Iterable, Optional, Union, List
+from typing import Iterable, Optional, Union, List
 
 from qiskit import QuantumCircuit
 

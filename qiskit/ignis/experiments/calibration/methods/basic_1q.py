@@ -93,13 +93,12 @@ class RoughAmplitudeCalibration(BaseCalibrationExperiment):
                  data_processing: DataProcessingSteps,
                  amp_vals: np.ndarray,
                  pulse_name: str,
-                 pulse_shape: str,
+                 calibration_group: Optional[str] = 'default',
                  analysis_class: Optional[BaseCalibrationAnalysis] = None,
                  job: Optional = None):
         """Create new rabi amplitude experiment.
 
         Args:
-            table: The table of pulse parameters.
             inst_def: The class that defines the instructions for this calibration.
             qubit: Qubit on which to run the calibration.
             data_processing: Steps used to process the data from the Result.
@@ -116,7 +115,7 @@ class RoughAmplitudeCalibration(BaseCalibrationExperiment):
         # something like qubit property table where f01, anharmonicity, T1, T2, etc... exist.
         freq01 = None
 
-        pname = pulse_name + '.d%i.' % qubit + pulse_shape + '.amp'
+        pname = pulse_name + '.d%i.' % qubit + '.amp'
 
         generator = generators.CircuitBasedGenerator(
             name='power_Rabi',
