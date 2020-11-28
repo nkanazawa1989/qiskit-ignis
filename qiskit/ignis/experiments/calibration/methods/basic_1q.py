@@ -12,16 +12,11 @@
 
 """Data source to generate schedule."""
 
-from typing import Optional, Callable
+from typing import Optional, Callable, List
 
-import numpy as np
-from qiskit import circuit
-
-from qiskit.ignis.experiments.calibration import (types,
-                                                  generators)
+from qiskit.ignis.experiments.calibration.generators import CircuitBasedGenerator
 from qiskit.ignis.experiments.calibration.data_processing import DataProcessingSteps
 from qiskit.ignis.experiments.calibration.cal_base_analysis import BaseCalibrationAnalysis
-from qiskit.ignis.experiments.calibration.instruction_data.database import PulseTable
 from qiskit.ignis.experiments.calibration.instruction_data import InstructionsDefinition
 from qiskit.ignis.experiments.calibration.cal_base_experiment import BaseCalibrationExperiment
 from qiskit.ignis.experiments.calibration.analysis.peak import GaussianFit
@@ -32,14 +27,14 @@ class RoughSpectroscopy(BaseCalibrationExperiment):
     """Performs a frequency spectroscopy by scanning the drive channel frequency."""
 
     def __init__(self,
-                 table: PulseTable,
+                 inst_def: InstructionsDefinition,
                  qubit: int,
                  data_processing: DataProcessingSteps,
-                 freq_vals: np.ndarray,
+                 freq_vals: List,
                  analysis_class: Optional[BaseCalibrationAnalysis] = None,
                  job: Optional = None,
                  pulse_envelope: Optional[Callable] = None,
-                 pulse_name: Optional[str] = types.SingleQubitPulses.XP.value):
+                 pulse_name: Optional[str] = ''):
         """Create new spectroscopy experiment.
 
         Args:
@@ -55,25 +50,19 @@ class RoughSpectroscopy(BaseCalibrationExperiment):
             pulse_name: Pulse name in the database entry to provide parameter set to
                 construct pulse schedule to calibrate. By default pi pulse parameter is used.
         """
-        param_dict = table.get_instruction_kwargs(
-            qubits=qubit,
-            channel='d*',
-            inst_name=pulse_name
-        )
 
         # todo get qubit property from other database.
         # channel ref frequency is different from pulse sideband and thus
         # this value is stored in another relational database.
         # something like qubit property table where f01, anharmonicity, T1, T2, etc... exist.
-        freq01 = circuit.Parameter('q{ind}.d{ind}.f01'.format(ind=qubit))
+        freq01 = 0.0
 
-        generator = generators.SinglePulseGenerator(
+        generator = CircuitBasedGenerator(
             name='spectroscopy',
             qubit=qubit,
-            parameters=param_dict,
+            template_circuit=inst_def.get_circuit(pulse_name, (qubit, )),
             values_to_scan=freq_vals,
-            ref_frequency=freq01,
-            pulse_envelope=pulse_envelope)
+            ref_frequency=freq01)
 
         # setup analysis
         if analysis_class is None:
@@ -91,7 +80,7 @@ class RoughAmplitudeCalibration(BaseCalibrationExperiment):
                  inst_def: InstructionsDefinition,
                  qubit: int,
                  data_processing: DataProcessingSteps,
-                 amp_vals: np.ndarray,
+                 amp_vals: List,
                  pulse_name: str,
                  calibration_group: Optional[str] = 'default',
                  analysis_class: Optional[BaseCalibrationAnalysis] = None,
@@ -115,9 +104,10 @@ class RoughAmplitudeCalibration(BaseCalibrationExperiment):
         # something like qubit property table where f01, anharmonicity, T1, T2, etc... exist.
         freq01 = None
 
-        pname = pulse_name + '.d%i.' % qubit + '.amp'
+        scope_id = inst_def.get_scope_id(pulse_name, (qubit, ))
+        pname = pulse_name + '.d%i.' % qubit + '.' + scope_id + '.amp'
 
-        generator = generators.CircuitBasedGenerator(
+        generator = CircuitBasedGenerator(
             name='power_Rabi',
             qubit=qubit,
             template_circuit=inst_def.get_circuit(pulse_name, (qubit, ), free_parameter_names=[pname]),

@@ -16,7 +16,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 
 import pandas as pd
-from qiskit.ignis.experiments.calibration.instruction_data.database import PulseTable
+from qiskit.ignis.experiments.calibration.instruction_data.parameter_table import PulseParameterTable
 from qiskit.result import Result
 import numpy as np
 from typing import Dict, Union, Tuple
@@ -72,7 +72,7 @@ class TwoQubitPulse:
                 'width': self.width}
 
 
-class FakeTwoQubitParameters(PulseTable):
+class FakeTwoQubitParameters(PulseParameterTable):
     """Mock pulse table database of two qubit system.
 
     This system consists of x90p, x90m, y90p and cross resonance pulse from qubit0 to 1.
