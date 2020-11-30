@@ -52,6 +52,22 @@ class PulseParameterTable:
         self._parameter_collection = init_dataframe
         self._channel_qubit_map = channel_qubit_map
 
+    def get_channel_name(self, qubits: Tuple) -> str:
+        """
+        Used to get control channels given the qubits.
+
+        Args:
+            qubits: the index of the qubits for which to get the channel.
+
+        Returns:
+            channel_name: the name of the channel for the given qubits.
+        """
+        for key, value in self._channel_qubit_map.items():
+            if value == qubits:
+                return key
+
+        raise KeyError('No channel found for qubits %s.' % (qubits, ))
+
     def filter_data(
             self,
             qubits: Optional[Union[int, Iterable[int]]] = None,

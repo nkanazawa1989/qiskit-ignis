@@ -312,6 +312,18 @@ class InstructionsDefinition:
 
         return matched_entries.iloc[0].name
 
+    def get_channel_name(self, qubits: Tuple) -> str:
+        """
+        Used to get control channels given the qubits.
+
+        Args:
+            qubits: the index of the qubits for which to get the channel.
+
+        Returns:
+            channel_name: the name of the channel for the given qubits.
+        """
+        return self._pulse_table.get_channel_name(qubits)
+
     def _add_schedule(self,
                       gate_name: str,
                       qubits: Union[int, Tuple[int]],
