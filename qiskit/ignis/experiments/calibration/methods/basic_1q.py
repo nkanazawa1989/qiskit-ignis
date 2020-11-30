@@ -105,7 +105,7 @@ class RoughAmplitudeCalibration(BaseCalibrationExperiment):
         freq01 = None
 
         scope_id = inst_def.get_scope_id(pulse_name, (qubit, ))
-        pname = pulse_name + '.d%i.' % qubit + '.' + scope_id + '.amp'
+        pname = pulse_name + '.d%i.' % qubit + scope_id + '.amp'
 
         generator = CircuitBasedGenerator(
             name='power_Rabi',

@@ -22,6 +22,8 @@ class CircuitBasedGenerator(Base1QCalibrationGenerator):
                          values_to_scan=values_to_scan,
                          ref_frequency=ref_frequency)
 
+        template_circuit.measure(qubit, qubit)
+
         self._template_qcs = [template_circuit]
 
     def template_qcs(self) -> List[QuantumCircuit]:
