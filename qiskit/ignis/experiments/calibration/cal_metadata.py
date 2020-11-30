@@ -36,25 +36,13 @@ class CalibrationMetadata:
     # This mapping is automatically generated at BaseCalibrationExperiment class.
     register_map: Dict[int, int] = None
 
-    def __init__(self,
-                 name: str = None,
-                 pulse_schedule_name: str = None,
-                 x_values: Dict[str, Union[int, float, complex]] = None,
-                 series: Union[str, int, float] = None,
-                 exp_id: str = None,
-                 qubits: List[int] = None,
-                 register_map: Dict[Union[str, int], int] = None):
-        self.name = name
-        self.pulse_schedule_name = pulse_schedule_name
-        self.x_values = x_values
-        self.series = series
-        self.exp_id = exp_id
-        self.qubits = qubits
-
-        if register_map:
-            self.register_map = {}
-            for key, value in register_map.items():
-                self.register_map[int(key)] = int(value)
+    def __post_init__(self):
+        """Ensure that keys are integers. This is needed because in JSon keys are str."""
+        register_map = {}
+        for key, value in self.register_map.items():
+            register_map[int(key)] = int(value)
+            
+        self.register_map = register_map
 
     def to_dict(self) -> dict:
         """Export the meta data to a dict structure."""
