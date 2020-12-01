@@ -33,18 +33,14 @@ class BaseCalibrationExperiment(Experiment):
         # TODO: Add transpiler & scheduler options
 
         # Get schedule
-        circuits = transpile(self.generator.circuits(),
-                             backend=backend,
-                             initial_layout=self.generator.qubits)
+        circuits = transpile(self.generator.circuits(), backend=backend)
 
         return schedule(circuits, backend=backend)
 
     def register_maps(self, backend: BaseBackend) -> List[Dict[int, int]]:
         """Return index mapping of qubits and clbits in measurement instructions."""
         # Get schedule
-        circuits = transpile(self.generator.circuits(),
-                             backend=backend,
-                             initial_layout=self.generator.qubits)
+        circuits = transpile(self.generator.circuits(), backend=backend)
 
         # Get register index mapping
         regmaps = []
@@ -79,15 +75,15 @@ class BaseCalibrationExperiment(Experiment):
             meta['register_map'] = regmap
 
         # The analysis data processing requires certain predefined data types.
-        self.analysis.workflow.shots = kwargs.get('shots', 1024)
-        shots = self.analysis.workflow.shots
+        self.analysis.data_processing_steps.shots = kwargs.get('shots', 1024)
+        shots = self.analysis.data_processing_steps.shots
 
         # Assemble and submit to backend
         qobj = assemble(schedules,
                         backend=backend,
                         qobj_header={'metadata': metadata},
-                        meas_level=self.analysis.workflow.meas_level(),
-                        meas_return=self.analysis.workflow.meas_return(),
+                        meas_level=self.analysis.data_processing_steps.meas_level(),
+                        meas_return=self.analysis.data_processing_steps.meas_return(),
                         shots=shots,
                         **kwargs)
         self._job = backend.run(qobj)

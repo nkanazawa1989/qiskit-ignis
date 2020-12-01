@@ -19,7 +19,7 @@ class CalibrationMetadata:
 
     # A dictionary of x-values the structure of this dict will
     # depend on the experiment being run.
-    x_values: Dict[str, Union[int, float, complex]]= None
+    x_values: Dict[str, Union[int, float, complex]] = None
 
     # The series of the Experiment to which the circuit is
     # attached to. E.g. 'X' or 'Y' for Ramsey measurements.
@@ -35,6 +35,14 @@ class CalibrationMetadata:
     # The key is the qubit index and value is the classical bit index.
     # This mapping is automatically generated at BaseCalibrationExperiment class.
     register_map: Dict[int, int] = None
+
+    def __post_init__(self):
+        """Ensure that keys are integers. This is needed because in JSon keys are str."""
+        register_map = {}
+        for key, value in self.register_map.items():
+            register_map[int(key)] = int(value)
+            
+        self.register_map = register_map
 
     def to_dict(self) -> dict:
         """Export the meta data to a dict structure."""

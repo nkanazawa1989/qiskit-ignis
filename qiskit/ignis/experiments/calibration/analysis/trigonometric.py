@@ -21,9 +21,12 @@ from qiskit.ignis.experiments.calibration.cal_base_analysis import BaseCalibrati
 def _freq_guess(xvals: np.ndarray, yvals: np.ndarray):
     """Initial frequency guess for oscillating data."""
 
-    fft_data = np.fft.fft(yvals)
+    # Subtract DC component
+    fft_data = np.fft.fft(yvals - np.mean(yvals))
     fft_freq = np.fft.fftfreq(len(xvals), xvals[1] - xvals[0])
-    f0_guess = np.abs(fft_freq[np.argmax(np.abs(fft_data))])
+
+    # Fit positive part of the spectrum
+    f0_guess = np.abs(fft_freq[np.argmax(np.abs(fft_data[0:len(fft_freq) // 2]))])
 
     if f0_guess == 0:
         # sampling duration is shorter than oscillation period
