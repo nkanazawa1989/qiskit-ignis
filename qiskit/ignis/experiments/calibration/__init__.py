@@ -28,3 +28,4 @@ each circuit should therefore be a dict with one entry and have the form
 """
 
 from qiskit.ignis.experiments.calibration.mock import FakeTwoQubitParameters
+from qiskit.ignis.experiments.calibration.instruction_data.gate_and_schedules_definition import InstructionsDefinition

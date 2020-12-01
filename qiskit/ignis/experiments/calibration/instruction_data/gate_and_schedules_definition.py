@@ -185,7 +185,7 @@ class InstructionsDefinition:
         schedule = utils.merge_duplicated_parameters(schedule)
 
         gate = Gate(name=gate_name, num_qubits=len(qubits), params=list(schedule.parameters))
-        circ = QuantumCircuit(self._n_qubits)  # Probably a better way of doing this
+        circ = QuantumCircuit(self._n_qubits, self._n_qubits)
         circ.append(gate, qubits)
         circ.add_calibration(gate, qubits, schedule, params=schedule.parameters)
 
