@@ -15,7 +15,7 @@
 
 from typing import Optional, List
 
-from qiskit.ignis.experiments.calibration.generators import CircuitBasedGenerator
+from qiskit.ignis.experiments.calibration import CircuitBasedGenerator
 from qiskit.ignis.experiments.calibration.data_processing import DataProcessingSteps
 from qiskit.ignis.experiments.calibration.cal_base_analysis import BaseCalibrationAnalysis
 from qiskit.ignis.experiments.calibration.instruction_data import InstructionsDefinition
@@ -23,7 +23,7 @@ from qiskit.ignis.experiments.calibration.cal_base_experiment import BaseCalibra
 from qiskit.ignis.experiments.calibration.analysis.trigonometric import CosinusoidalFit
 
 
-class RoughCRAmplitudeCalibration(BaseCalibrationExperiment):
+class RoughCRAmplitude(BaseCalibrationExperiment):
     """Performs a rough amplitude calibration by scanning the amplitude of the pulse."""
 
     def __init__(self,
@@ -60,11 +60,13 @@ class RoughCRAmplitudeCalibration(BaseCalibrationExperiment):
         u_ch = inst_def.get_channel_name((qc, qt))
 
         free_names = []
-        for name in pulse_names:
-            scope_id = inst_def.get_scope_id(name, (qc, qt))
-            free_names.append('%s.%s.%s.amp' % (name, u_ch, scope_id))
+        for pulse_name in pulse_names:
+            scope_id = inst_def.get_scope_id(gate_name, (qc, qt))
+            free_names.append('%s.%s.%s.amp' % (pulse_name, u_ch, scope_id))
 
-        template_circ = inst_def.get_circuit(gate_name, (qc, qt), free_parameter_names=free_names)
+        template_circ = inst_def.get_circuit('xp', (qc, ))
+        template_circ.compose(inst_def.get_circuit(gate_name, (qc, qt),
+                                                   free_parameter_names=free_names), inplace=True)
 
         # Create a template in which amplitude(cr90m) = -amplitude(cr90p)
         if 'cr90m' in pulse_names and 'cr90p' in pulse_names and len(pulse_names) == 2:
@@ -73,7 +75,7 @@ class RoughCRAmplitudeCalibration(BaseCalibrationExperiment):
 
         generator = CircuitBasedGenerator(
             name='cr_amp',
-            qubit=(qc, qt),
+            qubits=[qc, qt],
             template_circuit=template_circ,
             values_to_scan=amp_vals,
             ref_frequency=freq01)

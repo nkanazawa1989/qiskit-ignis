@@ -18,9 +18,10 @@ from qiskit.circuit import QuantumCircuit, Parameter
 
 from qiskit.ignis.experiments.base import Generator
 from qiskit.ignis.experiments.calibration import cal_metadata
+from qiskit.ignis.experiments.calibration.exceptions import CalExpError
 
 
-class Base1QCalibrationGenerator(Generator):
+class CircuitBasedGenerator(Generator):
     """
     A base generator for single-qubit calibration. All circuits
     generated from this generator will apply to a single qubit. 
@@ -28,14 +29,13 @@ class Base1QCalibrationGenerator(Generator):
 
     def __init__(self,
                  name: str,
-                 qubit: int,
-                 parameters: Dict[str, Union[int, float, complex, Parameter]],
+                 qubits: List[int],
+                 template_circuit: QuantumCircuit,
                  values_to_scan: Iterable[float],
                  ref_frequency: Optional[float] = None):
         """
         Args:
-            qubit: The qubit to which we will add the calibration.
-            parameters: The arguments for the pulse schedule.
+            qubits: The qubits to which we will add the calibration.
             values_to_scan: A list of parameter values for which to generate circuits.
             ref_frequency: A reference frequency of drive channel to run calibration.
                 Usually this is identical to the qubit frequency, or f_01.
@@ -43,19 +43,37 @@ class Base1QCalibrationGenerator(Generator):
                 shift frequency instruction of consecutive pulses, or pulse sideband,
                 are modulated with respect to this frequency.
         """
-        super().__init__(name=name, qubits=[qubit])
-        self._parameters = parameters
+        super().__init__(name=name, qubits=qubits)
         self._scanned_values = values_to_scan
         self._ref_frequency = ref_frequency
+
+        template_circuit.measure(qubits, qubits)
+
+        self._template_qcs = [template_circuit]
+
+        if not self._is_1d_scan():
+            raise CalExpError('Generator is a 1D scan. Too many free parameters.')
+
+    def _is_1d_scan(self) -> bool:
+        """Restrict this class to 1D scans."""
+        if len(self.parameters) != 1:
+            return False
+
+        return True
 
     @property
     def parameters(self):
         """Returns the list of parameters that the generator uses."""
-        return self._parameters
+        parameters = set()
+        for qc in self.template_qcs():
+            for parameter in qc.parameters:
+                parameters.add(parameter)
+
+        return parameters
 
     def template_qcs(self) -> List[QuantumCircuit]:
         """Create the template quantum circuit(s)."""
-        raise NotImplementedError
+        return self._template_qcs
 
     def circuits(self) -> List[QuantumCircuit]:
         """

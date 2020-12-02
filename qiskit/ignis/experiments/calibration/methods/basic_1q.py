@@ -14,7 +14,7 @@
 
 from typing import Optional, Callable, List
 
-from qiskit.ignis.experiments.calibration.generators import CircuitBasedGenerator
+from qiskit.ignis.experiments.calibration import CircuitBasedGenerator
 from qiskit.ignis.experiments.calibration.data_processing import DataProcessingSteps
 from qiskit.ignis.experiments.calibration.cal_base_analysis import BaseCalibrationAnalysis
 from qiskit.ignis.experiments.calibration.instruction_data import InstructionsDefinition
@@ -107,10 +107,12 @@ class RoughAmplitudeCalibration(BaseCalibrationExperiment):
         scope_id = inst_def.get_scope_id(pulse_name, (qubit, ))
         pname = pulse_name + '.d%i.' % qubit + scope_id + '.amp'
 
+        template_qc = inst_def.get_circuit(pulse_name, (qubit, ), free_parameter_names=[pname])
+
         generator = CircuitBasedGenerator(
             name='power_Rabi',
-            qubit=qubit,
-            template_circuit=inst_def.get_circuit(pulse_name, (qubit, ), free_parameter_names=[pname]),
+            qubits=[qubit],
+            template_circuit=template_qc,
             values_to_scan=amp_vals,
             ref_frequency=freq01)
 

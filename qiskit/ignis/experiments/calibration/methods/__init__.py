@@ -16,3 +16,5 @@ from qiskit.ignis.experiments.calibration.methods.basic_1q import (
     RoughAmplitudeCalibration,
     RoughSpectroscopy
 )
+
+from qiskit.ignis.experiments.calibration.methods.cross_resonance import RoughCRAmplitude
