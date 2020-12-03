@@ -40,7 +40,7 @@ class CalibrationMetadata:
         """Ensure that keys are integers. This is needed because in JSon keys are str."""
         if not self.register_map:
             return
-        
+
         register_map = {}
         for key, value in self.register_map.items():
             register_map[int(key)] = int(value)
