@@ -66,7 +66,7 @@ class PulseParameterTable:
             channel_name: the name of the channel for the given qubits.
         """
         for key, value in self._channel_qubit_map.items():
-            if value == qubits and value[0] == ch_type.prefix:
+            if value == qubits and key[0] == ch_type.prefix:
                 return key
 
         raise KeyError('No channel found for qubits %s.' % (qubits, ))
