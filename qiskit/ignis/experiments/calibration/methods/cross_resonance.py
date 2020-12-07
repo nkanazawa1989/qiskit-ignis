@@ -22,6 +22,8 @@ from qiskit.ignis.experiments.calibration.instruction_data import InstructionsDe
 from qiskit.ignis.experiments.calibration.cal_base_experiment import BaseCalibrationExperiment
 from qiskit.ignis.experiments.calibration.analysis.trigonometric import CosinusoidalFit
 
+from qiskit.pulse import ControlChannel
+
 
 class RoughCRAmplitude(BaseCalibrationExperiment):
     """Performs a rough amplitude calibration by scanning the amplitude of the pulse."""
@@ -31,12 +33,14 @@ class RoughCRAmplitude(BaseCalibrationExperiment):
                  qubits: Tuple[int, int],
                  data_processing: DataProcessingSteps,
                  amp_vals: List,
-                 cr_pulse_names: List[str],
                  cr_name: Optional[str] = 'cr',
                  calibration_group: Optional[str] = 'default',
                  analysis_class: Optional[BaseCalibrationAnalysis] = None,
                  job: Optional = None):
-        """Create new rabi amplitude experiment.
+        """
+        The amplitude of the pulses on the u channel are scanned. The echoed-cr gates with cr90p
+        and cr90m will have amplitudes scanned with opposite signs.
+
         Args:
             inst_def: The class that defines the instructions for this calibration.
             qubits: Qubits of the gate given as (Control, Target).
@@ -45,8 +49,6 @@ class RoughCRAmplitude(BaseCalibrationExperiment):
             analysis_class: Analysis class used.
             job: Optional job id to retrieve past experiments.
             cr_name: Name of the cross-resonance gate from the instructions definition to use.
-            cr_pulse_names: Name of the pulses in the CR gate that will have their amplitude
-                scanned e.g. [cr180] or [cr90p, cr90m].
         """
         # todo calibration_group is not handled yet
         # todo get qubit property from other database.
@@ -55,26 +57,32 @@ class RoughCRAmplitude(BaseCalibrationExperiment):
         # something like qubit property table where f01, anharmonicity, T1, T2, etc... exist.
         freq01 = None
 
-        u_ch = inst_def.get_channel_name(qubits)
+        u_ch_name = inst_def.get_channel_name(qubits)
 
+        # Create a list of amp parameters on the control channel.
+        u_ch = ControlChannel(int(u_ch_name[1:]))
+        u_ch_inst = inst_def.get_schedule(cr_name, qubits).filter(channels=[u_ch]).instructions
         free_names = []
-        for pulse_name in cr_pulse_names:
-            scope_id = inst_def.get_scope_id(cr_name, qubits)
-            free_names.append('%s.%s.%s.amp' % (pulse_name, u_ch, scope_id))
+        for instruction in u_ch_inst:
+            free_names.append(instruction[1].name + '.amp')
 
-        template_circ = inst_def.get_circuit('xp', (qubits[0], ))
-        template_circ.compose(inst_def.get_circuit(cr_name, qubits,
-                                                   free_parameter_names=free_names), inplace=True)
+        qc = inst_def.get_circuit('xp', (qubits[0], ))
+        qc.compose(inst_def.get_circuit(cr_name, qubits, free_parameter_names=free_names),
+                   inplace=True)
 
         # Create a template in which amplitude(cr90m) = -amplitude(cr90p)
-        if 'cr90m' in cr_pulse_names and 'cr90p' in cr_pulse_names and len(cr_pulse_names) == 2:
-            params = list(template_circ.parameters)
-            template_circ.assign_parameters({params[1]: -params[0]}, inplace=True)
+        u_pulse_names = []
+        for name in free_names:
+            u_pulse_names.append(name.split('.')[0])
+
+        if 'cr90m' in u_pulse_names and 'cr90p' in u_pulse_names and len(u_pulse_names) == 2:
+            params = list(qc.parameters)
+            qc.assign_parameters({params[1]: -params[0]}, inplace=True)
 
         generator = CircuitBasedGenerator(
             name='cr_amp',
             qubits=qubits,
-            template_circuit=template_circ,
+            template_circuit=qc,
             values_to_scan=amp_vals,
             ref_frequency=freq01)
 

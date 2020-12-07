@@ -264,7 +264,7 @@ class InstructionsDefinition:
 
     def get_schedule(self,
                      gate_name: Optional[str] = None,
-                     qubits: Optional[Union[int, Tuple[int]]] = None,
+                     qubits: Optional[Union[int, Tuple[int, ...]]] = None,
                      free_parameter_names: Optional[List[str]] = None,
                      calibration_group: str = 'default') -> Schedule:
         """
