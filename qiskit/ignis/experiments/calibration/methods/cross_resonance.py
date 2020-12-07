@@ -57,10 +57,9 @@ class RoughCRAmplitude(BaseCalibrationExperiment):
         # something like qubit property table where f01, anharmonicity, T1, T2, etc... exist.
         freq01 = None
 
-        u_ch_name = inst_def.get_channel_name(qubits, ControlChannel)
+        u_ch = inst_def.get_channel(qubits, ControlChannel)
 
         # Create a list of amp parameters on the control channel.
-        u_ch = ControlChannel(int(u_ch_name[1:]))
         u_ch_inst = inst_def.get_schedule(cr_name, qubits).filter(channels=[u_ch]).instructions
         free_names = []
         for instruction in u_ch_inst:

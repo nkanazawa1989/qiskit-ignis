@@ -313,18 +313,19 @@ class InstructionsDefinition:
 
         return matched_entries.iloc[0].name
 
-    def get_channel_name(self, qubits: Tuple[int, ...], ch_type: Type[PulseChannel]) -> str:
+    def get_channel(self, qubits: Tuple[int, ...],
+                    ch_type: Type[PulseChannel]) -> PulseChannel:
         """
-        Used to get control channels given the qubits.
+        Used to get pulse channels given the qubits and type.
 
         Args:
             qubits: the index of the qubits for which to get the channel.
             ch_type: type of the pulse channel to return.
 
         Returns:
-            channel_name: the name of the channel for the given qubits.
+            channel: an instance of ch_type for the given qubits and type.
         """
-        return self._pulse_table.get_channel_name(qubits, ch_type)
+        return self._pulse_table.get_channel(qubits, ch_type)
 
     def _add_schedule(self,
                       gate_name: str,
