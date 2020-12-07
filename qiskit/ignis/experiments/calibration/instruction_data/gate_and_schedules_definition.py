@@ -14,12 +14,13 @@
 
 import hashlib
 from enum import Enum
-from typing import Dict, Union, List, Tuple, Optional
+from typing import Dict, Union, List, Tuple, Optional, Type
 
 import pandas as pd
 from qiskit.circuit import Gate
 from qiskit.providers.basebackend import BaseBackend
 from qiskit.pulse import Schedule
+from qiskit.pulse.channels import PulseChannel
 
 from qiskit import QuantumCircuit
 from qiskit.ignis.experiments.calibration.instruction_data import compiler
@@ -312,17 +313,18 @@ class InstructionsDefinition:
 
         return matched_entries.iloc[0].name
 
-    def get_channel_name(self, qubits: Tuple[int, ...]) -> str:
+    def get_channel_name(self, qubits: Tuple[int, ...], ch_type: Type[PulseChannel]) -> str:
         """
         Used to get control channels given the qubits.
 
         Args:
             qubits: the index of the qubits for which to get the channel.
+            ch_type: type of the pulse channel to return.
 
         Returns:
             channel_name: the name of the channel for the given qubits.
         """
-        return self._pulse_table.get_channel_name(qubits)
+        return self._pulse_table.get_channel_name(qubits, ch_type)
 
     def _add_schedule(self,
                       gate_name: str,

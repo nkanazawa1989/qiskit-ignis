@@ -15,12 +15,14 @@
 # TODO add detailed description of databases.
 """
 
-from typing import Dict, Union, Iterable, Optional, List, Tuple
+from typing import Dict, Union, Iterable, Optional, List, Tuple, Type
 
 import pandas as pd
 
 from qiskit.ignis.experiments.calibration import types
 from qiskit.ignis.experiments.calibration.exceptions import CalExpError
+
+from qiskit.pulse.channels import PulseChannel
 
 
 class PulseParameterTable:
@@ -52,18 +54,19 @@ class PulseParameterTable:
         self._parameter_collection = init_dataframe
         self._channel_qubit_map = channel_qubit_map
 
-    def get_channel_name(self, qubits: Tuple) -> str:
+    def get_channel_name(self, qubits: Tuple, ch_type: Type[PulseChannel]) -> str:
         """
         Used to get control channels given the qubits.
 
         Args:
             qubits: the index of the qubits for which to get the channel.
+            ch_type: type of the pulse channel to return.
 
         Returns:
             channel_name: the name of the channel for the given qubits.
         """
         for key, value in self._channel_qubit_map.items():
-            if value == qubits:
+            if value == qubits and value[0] == ch_type.prefix:
                 return key
 
         raise KeyError('No channel found for qubits %s.' % (qubits, ))
