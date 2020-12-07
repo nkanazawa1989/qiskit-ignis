@@ -13,5 +13,3 @@
 from qiskit.ignis.experiments.calibration.generators.single_qubit import (
     SinglePulseGenerator
 )
-
-from qiskit.ignis.experiments.calibration.generators.circuit_based import CircuitBasedGenerator

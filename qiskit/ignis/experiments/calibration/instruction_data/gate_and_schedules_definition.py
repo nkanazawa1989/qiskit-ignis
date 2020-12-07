@@ -14,12 +14,13 @@
 
 import hashlib
 from enum import Enum
-from typing import Dict, Union, List, Tuple, Optional
+from typing import Dict, Union, List, Tuple, Optional, Type
 
 import pandas as pd
 from qiskit.circuit import Gate
 from qiskit.providers.basebackend import BaseBackend
 from qiskit.pulse import Schedule
+from qiskit.pulse.channels import PulseChannel
 
 from qiskit import QuantumCircuit
 from qiskit.ignis.experiments.calibration.instruction_data import compiler
@@ -264,7 +265,7 @@ class InstructionsDefinition:
 
     def get_schedule(self,
                      gate_name: Optional[str] = None,
-                     qubits: Optional[Union[int, Tuple[int]]] = None,
+                     qubits: Optional[Union[int, Tuple[int, ...]]] = None,
                      free_parameter_names: Optional[List[str]] = None,
                      calibration_group: str = 'default') -> Schedule:
         """
@@ -296,7 +297,7 @@ class InstructionsDefinition:
 
     def get_scope_id(self,
                      gate_name: str,
-                     qubits: Union[int, Tuple[int]]) -> str:
+                     qubits: Union[int, Tuple[int, ...]]) -> str:
         """A helper function to get scope id from the gate name and qubits.
 
         If gate is not stored in the database this causes an error.
@@ -312,9 +313,23 @@ class InstructionsDefinition:
 
         return matched_entries.iloc[0].name
 
+    def get_channel(self, qubits: Tuple[int, ...],
+                    ch_type: Type[PulseChannel]) -> PulseChannel:
+        """
+        Used to get pulse channels given the qubits and type.
+
+        Args:
+            qubits: the index of the qubits for which to get the channel.
+            ch_type: type of the pulse channel to return.
+
+        Returns:
+            channel: an instance of ch_type for the given qubits and type.
+        """
+        return self._pulse_table.get_channel(qubits, ch_type)
+
     def _add_schedule(self,
                       gate_name: str,
-                      qubits: Union[int, Tuple[int]],
+                      qubits: Union[int, Tuple[int, ...]],
                       signature: List[str],
                       sched_code: str) -> str:
         """A helper function to add new gate schedule to the database.
@@ -346,7 +361,7 @@ class InstructionsDefinition:
 
         return scope_id
 
-    def _deduplicate_scope_id(self, gate_name: str, qubits: Tuple[int]) -> str:
+    def _deduplicate_scope_id(self, gate_name: str, qubits: Tuple[int, ...]) -> str:
         """A helper function to create unique gate id."""
         ident = 0
         while True:
