@@ -296,7 +296,7 @@ class InstructionsDefinition:
 
     def get_scope_id(self,
                      gate_name: str,
-                     qubits: Union[int, Tuple[int]]) -> str:
+                     qubits: Union[int, Tuple[int, ...]]) -> str:
         """A helper function to get scope id from the gate name and qubits.
 
         If gate is not stored in the database this causes an error.
@@ -312,7 +312,7 @@ class InstructionsDefinition:
 
         return matched_entries.iloc[0].name
 
-    def get_channel_name(self, qubits: Tuple) -> str:
+    def get_channel_name(self, qubits: Tuple[int, ...]) -> str:
         """
         Used to get control channels given the qubits.
 
@@ -326,7 +326,7 @@ class InstructionsDefinition:
 
     def _add_schedule(self,
                       gate_name: str,
-                      qubits: Union[int, Tuple[int]],
+                      qubits: Union[int, Tuple[int, ...]],
                       signature: List[str],
                       sched_code: str) -> str:
         """A helper function to add new gate schedule to the database.
@@ -358,7 +358,7 @@ class InstructionsDefinition:
 
         return scope_id
 
-    def _deduplicate_scope_id(self, gate_name: str, qubits: Tuple[int]) -> str:
+    def _deduplicate_scope_id(self, gate_name: str, qubits: Tuple[int, ...]) -> str:
         """A helper function to create unique gate id."""
         ident = 0
         while True:

@@ -13,7 +13,7 @@
 """Data source to generate schedule."""
 
 
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 from qiskit.ignis.experiments.calibration import CircuitBasedGenerator
 from qiskit.ignis.experiments.calibration.data_processing import DataProcessingSteps
@@ -28,25 +28,23 @@ class RoughCRAmplitude(BaseCalibrationExperiment):
 
     def __init__(self,
                  inst_def: InstructionsDefinition,
-                 qc: int,
-                 qt: int,
+                 qubits: Tuple[int, int],
                  data_processing: DataProcessingSteps,
                  amp_vals: List,
-                 gate_name: str,
                  pulse_names: List[str],
+                 cr_name: Optional[str] = 'cr',
                  calibration_group: Optional[str] = 'default',
                  analysis_class: Optional[BaseCalibrationAnalysis] = None,
                  job: Optional = None):
         """Create new rabi amplitude experiment.
         Args:
             inst_def: The class that defines the instructions for this calibration.
-            qc: Control qubit.
-            qt: Target qubit.
+            qubits: Qubits of the gate given as (Control, Target).
             data_processing: Steps used to process the data from the Result.
             amp_vals: Amplitude values to scan in the calibration.
             analysis_class: Analysis class used.
             job: Optional job id to retrieve past experiments.
-            gate_name: Name of the gate from the instructions definition.
+            cr_name: Name of the cross-resonance gate from the instructions definition to use.
             pulse_names: Pulse names in the database entry to provide parameter set to
                 construct pulse schedule to calibrate. By default pi pulse parameter is used.
         """
@@ -57,15 +55,15 @@ class RoughCRAmplitude(BaseCalibrationExperiment):
         # something like qubit property table where f01, anharmonicity, T1, T2, etc... exist.
         freq01 = None
 
-        u_ch = inst_def.get_channel_name((qc, qt))
+        u_ch = inst_def.get_channel_name(qubits)
 
         free_names = []
         for pulse_name in pulse_names:
-            scope_id = inst_def.get_scope_id(gate_name, (qc, qt))
+            scope_id = inst_def.get_scope_id(cr_name, qubits)
             free_names.append('%s.%s.%s.amp' % (pulse_name, u_ch, scope_id))
 
-        template_circ = inst_def.get_circuit('xp', (qc, ))
-        template_circ.compose(inst_def.get_circuit(gate_name, (qc, qt),
+        template_circ = inst_def.get_circuit('xp', (qubits[0], ))
+        template_circ.compose(inst_def.get_circuit(cr_name, qubits,
                                                    free_parameter_names=free_names), inplace=True)
 
         # Create a template in which amplitude(cr90m) = -amplitude(cr90p)
@@ -75,7 +73,7 @@ class RoughCRAmplitude(BaseCalibrationExperiment):
 
         generator = CircuitBasedGenerator(
             name='cr_amp',
-            qubits=[qc, qt],
+            qubits=qubits,
             template_circuit=template_circ,
             values_to_scan=amp_vals,
             ref_frequency=freq01)
