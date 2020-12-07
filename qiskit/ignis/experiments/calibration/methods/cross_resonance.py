@@ -31,7 +31,7 @@ class RoughCRAmplitude(BaseCalibrationExperiment):
                  qubits: Tuple[int, int],
                  data_processing: DataProcessingSteps,
                  amp_vals: List,
-                 pulse_names: List[str],
+                 cr_pulse_names: List[str],
                  cr_name: Optional[str] = 'cr',
                  calibration_group: Optional[str] = 'default',
                  analysis_class: Optional[BaseCalibrationAnalysis] = None,
@@ -45,10 +45,10 @@ class RoughCRAmplitude(BaseCalibrationExperiment):
             analysis_class: Analysis class used.
             job: Optional job id to retrieve past experiments.
             cr_name: Name of the cross-resonance gate from the instructions definition to use.
-            pulse_names: Pulse names in the database entry to provide parameter set to
-                construct pulse schedule to calibrate. By default pi pulse parameter is used.
+            cr_pulse_names: Name of the pulses in the CR gate that will have their amplitude
+                scanned e.g. [cr180] or [cr90p, cr90m].
         """
-
+        # todo calibration_group is not handled yet
         # todo get qubit property from other database.
         # channel ref frequency is different from pulse sideband and thus
         # this value is stored in another relational database.
@@ -58,7 +58,7 @@ class RoughCRAmplitude(BaseCalibrationExperiment):
         u_ch = inst_def.get_channel_name(qubits)
 
         free_names = []
-        for pulse_name in pulse_names:
+        for pulse_name in cr_pulse_names:
             scope_id = inst_def.get_scope_id(cr_name, qubits)
             free_names.append('%s.%s.%s.amp' % (pulse_name, u_ch, scope_id))
 
@@ -67,7 +67,7 @@ class RoughCRAmplitude(BaseCalibrationExperiment):
                                                    free_parameter_names=free_names), inplace=True)
 
         # Create a template in which amplitude(cr90m) = -amplitude(cr90p)
-        if 'cr90m' in pulse_names and 'cr90p' in pulse_names and len(pulse_names) == 2:
+        if 'cr90m' in cr_pulse_names and 'cr90p' in cr_pulse_names and len(cr_pulse_names) == 2:
             params = list(template_circ.parameters)
             template_circ.assign_parameters({params[1]: -params[0]}, inplace=True)
 
