@@ -62,3 +62,18 @@ class CosinusoidalFit(BaseCalibrationAnalysis):
                      yvals: np.ndarray) -> List[Tuple[float, float]]:
 
         return [(-np.inf, np.inf), (0, np.inf), (-np.pi, np.pi), (-np.inf, np.inf)]
+
+    def get_fit_function_period_fraction(self, period_fraction: float,
+                                         qubit: int, tag: str) -> float:
+        """
+        Returns the x location corresponding to a fraction of a full oscillation.
+
+        Args:
+            period_fraction: The fraction of the period.
+            qubit: the qubit for which the analysis was carried out.
+            tag: the key used to identify the fit in self.result.
+
+        Returns:
+            x: given by period_fraction/fitvals[1]
+        """
+        return period_fraction/self.result[qubit][tag].fitvals[1]

@@ -13,6 +13,7 @@
 """Data source to generate schedule."""
 
 from typing import Optional, Callable, List
+import numpy as np
 
 from qiskit.ignis.experiments.calibration import CircuitBasedGenerator
 from qiskit.ignis.experiments.calibration.data_processing import DataProcessingSteps
@@ -21,6 +22,7 @@ from qiskit.ignis.experiments.calibration.instruction_data import InstructionsDe
 from qiskit.ignis.experiments.calibration.cal_base_experiment import BaseCalibrationExperiment
 from qiskit.ignis.experiments.calibration.analysis.peak import GaussianFit
 from qiskit.ignis.experiments.calibration.analysis.trigonometric import CosinusoidalFit
+from qiskit.ignis.experiments.calibration.exceptions import CalExpError
 
 
 class RoughSpectroscopy(BaseCalibrationExperiment):
@@ -81,7 +83,7 @@ class RoughAmplitudeCalibration(BaseCalibrationExperiment):
                  qubit: int,
                  data_processing: DataProcessingSteps,
                  amp_vals: List,
-                 pulse_name: str,
+                 gate_name: str,
                  calibration_group: Optional[str] = 'default',
                  analysis_class: Optional[BaseCalibrationAnalysis] = None,
                  job: Optional = None):
@@ -92,11 +94,12 @@ class RoughAmplitudeCalibration(BaseCalibrationExperiment):
             qubit: Qubit on which to run the calibration.
             data_processing: Steps used to process the data from the Result.
             amp_vals: Amplitude values to scan in the calibration.
+            gate_name: Pulse name in the database entry to provide parameter set to
+                construct pulse schedule to calibrate. By default pi pulse parameter is used.
             analysis_class: Analysis class used.
             job: Optional job id to retrieve past experiments.
-            pulse_name: Pulse name in the database entry to provide parameter set to
-                construct pulse schedule to calibrate. By default pi pulse parameter is used.
         """
+        self._name = 'power_rabi'
 
         # todo get qubit property from other database.
         # channel ref frequency is different from pulse sideband and thus
@@ -104,13 +107,15 @@ class RoughAmplitudeCalibration(BaseCalibrationExperiment):
         # something like qubit property table where f01, anharmonicity, T1, T2, etc... exist.
         freq01 = None
 
-        scope_id = inst_def.get_scope_id(pulse_name, (qubit, ))
-        pname = pulse_name + '.d%i.' % qubit + scope_id + '.amp'
+        scope_id = inst_def.get_scope_id(gate_name, (qubit,))
+        p_name = inst_def.pulse_parameter_table.get_full_name('amp', gate_name,
+                                                              'd%i' % qubit, scope_id)
 
-        template_qc = inst_def.get_circuit(pulse_name, (qubit, ), free_parameter_names=[pname])
+        template_qc = inst_def.get_circuit(gate_name, (qubit, ), free_parameter_names=[p_name])
+        template_qc.name = 'circuit'
 
         generator = CircuitBasedGenerator(
-            name='power_Rabi',
+            name=self._name,
             qubits=[qubit],
             template_circuit=template_qc,
             values_to_scan=amp_vals,
@@ -121,6 +126,26 @@ class RoughAmplitudeCalibration(BaseCalibrationExperiment):
             analysis_class = CosinusoidalFit(name=generator.name,
                                              data_processing_steps=data_processing)
 
-        super().__init__(generator=generator,
-                         analysis=analysis_class,
-                         job=job)
+        self.qubit = qubit  # todo move to base class
+        self._inst_def = inst_def  # todo move to base class
+        self._parameter_name = p_name  # todo move to base class?
+        self._calibration_group = calibration_group
+
+        super().__init__(generator=generator, analysis=analysis_class, job=job)
+
+    def update_calibrations(self):
+        """
+        Updates the amplitude of the xp pulse.
+        """
+        pulse_name, channel, scope_id, param_name = self._parameter_name.split('.')
+        tag = 'circuit.'+self._name
+        value = self.analysis.get_fit_function_period_fraction(0.5, self.qubit, tag)
+
+        self._inst_def.pulse_parameter_table.set_parameter(
+            parameter_name=param_name,
+            pulse_name=pulse_name,
+            channel=channel,
+            scope_id=scope_id,
+            value=value,
+            calibration_group=self._calibration_group
+        )

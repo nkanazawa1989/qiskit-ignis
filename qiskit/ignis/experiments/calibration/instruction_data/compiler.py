@@ -307,10 +307,13 @@ class NodeVisitor:
         # generate parameter names on the fly
         parametric_pulse_kwargs = dict()
         for pname in utils.get_pulse_parameters(parametric_pulse):
-            composite_name = utils.composite_param_name(name=pname,
-                                                        channel=node.channel,
-                                                        pulse_name=node.name,
-                                                        scope_id=self._scope_id)
+            composite_name = self._inst_def.pulse_parameter_table.get_full_name(
+                parameter_name=pname,
+                pulse_name=node.name,
+                channel=node.channel,
+                scope_id=self._scope_id,
+                calibration_group=self._calibration_group
+            )
             # TODO calling parameter biding here is bit strange.
             # This parameter binding should be offloaded to the get_gate_schedule method.
             # However, we cannot do this now because of parametrization of duration.

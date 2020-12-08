@@ -104,3 +104,17 @@ class BaseCalibrationExperiment(Experiment):
                 register_map[qubits[0].index] = clbits[0].index
 
         return register_map
+
+    def run_analysis(self, update_calibrations: bool = False, **params):
+        """
+        Args:
+              update_calibrations: If true the analysis will run and update any parameters in the DB.
+        """
+        super().run_analysis(**params)
+
+        if update_calibrations:
+            self.update_calibrations()
+
+    def update_calibrations(self):
+        """Update any parameters in the DB."""
+        pass

@@ -141,6 +141,20 @@ class BaseCalibrationAnalysis(Analysis):
         """
         raise NotImplementedError
 
+    def get_fit_function_period_fraction(self, period_fraction: float,
+                                         qubit: int, tag: str) -> float:
+        """
+        Returns the x location corresponding to a fraction of a full oscillation. E.g.
+        if fraction = 0.5 and the function function is cos(2 pi a x) then return 1/2a.
+        Not all analysis routines will implement this.
+
+        Args:
+            period_fraction: The fraction of the period.
+            qubit: the qubit for which the analysis was carried out.
+            tag: the key used to identify the fit in self.result.
+        """
+        raise NotImplementedError
+
     def chi_squared(self,
                     parameters: np.ndarray,
                     xvals: np.ndarray,

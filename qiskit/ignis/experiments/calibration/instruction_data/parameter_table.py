@@ -105,6 +105,36 @@ class PulseParameterTable:
             name=name,
             validation=validation)
 
+    def get_full_name(self, parameter_name: str, pulse_name: str, channel: str,
+                      scope_id: Optional[str] = 'global',
+                      calibration_group: Optional[str] = 'default') -> str:
+        """
+        Get full parameter name properly manages the scop ot the parameter.
+
+        Returns:
+            parameter_name: in format pulse_name.channel.scope_id.parameter_name
+        """
+        matched = self._find_data(name=parameter_name,
+                                  pulse_name=pulse_name,
+                                  channel=channel,
+                                  calibration_group=calibration_group,
+                                  scope_id=scope_id)
+
+        if len(matched) == 0 and scope_id != 'global':
+            scope_id = 'global'
+            matched = self._find_data(name=parameter_name,
+                                      pulse_name=pulse_name,
+                                      channel=channel,
+                                      calibration_group=calibration_group,
+                                      scope_id=scope_id)
+
+        full_name = '%s.%s.%s.%s' % (pulse_name, channel, scope_id, parameter_name)
+
+        if len(matched) == 0:
+            raise CalExpError('Could not find parameter %s.' % full_name)
+
+        return full_name
+
     def get_parameter(
             self,
             parameter_name: str,
@@ -269,7 +299,7 @@ class PulseParameterTable:
             pulse_name: str,
             channel: str,
             pulse_shape: str,
-            scope_id: Optional[str] = None,
+            scope_id: Optional[str] = 'global',
             calibration_group: Optional[str] = 'default'
     ):
         """A special method to save pulse shape in the database.
@@ -287,8 +317,6 @@ class PulseParameterTable:
             scope_id: The scope id of pulse where pulse belongs to.
             calibration_group: The name of calibration.
         """
-        scope_id = scope_id or 'global'
-
         # duplication check
         existing_entry = self._find_data(
             channel=channel,

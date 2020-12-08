@@ -222,10 +222,7 @@ class InstructionsDefinition:
                 This name defaults to `default`.
         """
         # generate scope id from gate name and qubits
-        if gate_name is None or qubits is None:
-            scope_id = 'global'
-        else:
-            scope_id = self.get_scope_id(gate_name, qubits)
+        scope_id = self.get_scope_id(gate_name, qubits)
 
         # check pulse shape
         valid_shapes = self.parametric_shapes.__members__
@@ -274,7 +271,7 @@ class InstructionsDefinition:
         User can specify (gate_name, qubits) or unique schedule id to retrieve target schedule.
 
         Args:
-            gate_name: Name of the schedule to retrive.
+            gate_name: Name of the schedule to retrieve.
             qubits: qubits for which to get the schedule.
             free_parameter_names: List of parameter names that will be left unassigned.
                 The parameter assignment is done by querying the pulse parameter table.
@@ -306,6 +303,9 @@ class InstructionsDefinition:
             gate_name: Gate name of this entry.
             qubits: Qubit associated with this gate.
         """
+        if gate_name is None or qubits is None:
+            return 'global'
+
         matched_entries = self._find_schedules(gate_name=gate_name, qubits=qubits)
 
         if len(matched_entries) > 1:
