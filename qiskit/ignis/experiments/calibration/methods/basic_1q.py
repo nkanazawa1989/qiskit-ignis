@@ -13,7 +13,8 @@
 """Data source to generate schedule."""
 
 from typing import Optional, Callable, List
-import numpy as np
+
+from qiskit.pulse import DriveChannel
 
 from qiskit.ignis.experiments.calibration import CircuitBasedGenerator
 from qiskit.ignis.experiments.calibration.data_processing import DataProcessingSteps
@@ -22,7 +23,6 @@ from qiskit.ignis.experiments.calibration.instruction_data import InstructionsDe
 from qiskit.ignis.experiments.calibration.cal_base_experiment import BaseCalibrationExperiment
 from qiskit.ignis.experiments.calibration.analysis.peak import GaussianFit
 from qiskit.ignis.experiments.calibration.analysis.trigonometric import CosinusoidalFit
-from qiskit.ignis.experiments.calibration.exceptions import CalExpError
 
 
 class RoughSpectroscopy(BaseCalibrationExperiment):
@@ -108,8 +108,8 @@ class RoughAmplitudeCalibration(BaseCalibrationExperiment):
         freq01 = None
 
         scope_id = inst_def.get_scope_id(gate_name, (qubit,))
-        p_name = inst_def.pulse_parameter_table.get_full_name('amp', gate_name,
-                                                              'd%i' % qubit, scope_id)
+        ch_name = inst_def.get_channel((qubit,), DriveChannel).name
+        p_name = inst_def.pulse_parameter_table.get_full_name('amp', gate_name, ch_name, scope_id)
 
         template_qc = inst_def.get_circuit(gate_name, (qubit, ), free_parameter_names=[p_name])
         template_qc.name = 'circuit'
