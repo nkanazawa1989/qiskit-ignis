@@ -85,7 +85,7 @@ class RoughAmplitudeCalibration(BaseCalibrationExperiment):
                  amp_vals: List,
                  gate_name: str,
                  calibration_group: Optional[str] = 'default',
-                 analysis_class: Optional[BaseCalibrationAnalysis] = None,
+                 analysis: Optional[BaseCalibrationAnalysis] = None,
                  job: Optional = None):
         """Create new rabi amplitude experiment.
 
@@ -96,11 +96,9 @@ class RoughAmplitudeCalibration(BaseCalibrationExperiment):
             amp_vals: Amplitude values to scan in the calibration.
             gate_name: Pulse name in the database entry to provide parameter set to
                 construct pulse schedule to calibrate. By default pi pulse parameter is used.
-            analysis_class: Analysis class used.
+            analysis: Analysis class used.
             job: Optional job id to retrieve past experiments.
         """
-        self._name = 'power_rabi'
-
         # todo get qubit property from other database.
         # channel ref frequency is different from pulse sideband and thus
         # this value is stored in another relational database.
@@ -114,32 +112,27 @@ class RoughAmplitudeCalibration(BaseCalibrationExperiment):
         template_qc = inst_def.get_circuit(gate_name, (qubit, ), free_parameter_names=[p_name])
         template_qc.name = 'circuit'
 
+        name = 'power_rabi'
         generator = CircuitBasedGenerator(
-            name=self._name,
+            name=name,
             qubits=[qubit],
             template_circuit=template_qc,
             values_to_scan=amp_vals,
             ref_frequency=freq01)
 
         # setup analysis
-        if analysis_class is None:
-            analysis_class = CosinusoidalFit(name=generator.name,
-                                             data_processing_steps=data_processing)
+        if analysis is None:
+            analysis = CosinusoidalFit(name=name, data_processing_steps=data_processing)
 
-        self.qubit = qubit  # todo move to base class
-        self._inst_def = inst_def  # todo move to base class
-        self._parameter_name = p_name  # todo move to base class?
-        self._calibration_group = calibration_group
-
-        super().__init__(generator=generator, analysis=analysis_class, job=job)
+        super().__init__(name, inst_def, [p_name], analysis, generator, calibration_group, job)
 
     def update_calibrations(self):
         """
         Updates the amplitude of the xp pulse.
         """
-        pulse_name, channel, scope_id, param_name = self._parameter_name.split('.')
+        pulse_name, channel, scope_id, param_name = self._parameter_names[0].split('.')
         tag = 'circuit.'+self._name
-        value = self.analysis.get_fit_function_period_fraction(0.5, self.qubit, tag)
+        value = self.analysis.get_fit_function_period_fraction(0.5, self.qubits[0], tag)
 
         self._inst_def.pulse_parameter_table.set_parameter(
             parameter_name=param_name,

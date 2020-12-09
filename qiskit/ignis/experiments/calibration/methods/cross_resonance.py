@@ -35,7 +35,7 @@ class RoughCRAmplitude(BaseCalibrationExperiment):
                  amp_vals: List,
                  cr_name: Optional[str] = 'cr',
                  calibration_group: Optional[str] = 'default',
-                 analysis_class: Optional[BaseCalibrationAnalysis] = None,
+                 analysis: Optional[BaseCalibrationAnalysis] = None,
                  job: Optional = None):
         """
         The amplitude of the pulses on the u channel are scanned. The echoed-cr gates with cr90p
@@ -46,7 +46,7 @@ class RoughCRAmplitude(BaseCalibrationExperiment):
             qubits: Qubits of the gate given as (Control, Target).
             data_processing: Steps used to process the data from the Result.
             amp_vals: Amplitude values to scan in the calibration.
-            analysis_class: Analysis class used.
+            analysis: Analysis class used.
             job: Optional job id to retrieve past experiments.
             cr_name: Name of the cross-resonance gate from the instructions definition to use.
         """
@@ -57,30 +57,24 @@ class RoughCRAmplitude(BaseCalibrationExperiment):
         # something like qubit property table where f01, anharmonicity, T1, T2, etc... exist.
         freq01 = None
 
-        self._name = 'cr_amp'
-        self._qubits = qubits  # todo move to base class
-        self._inst_def = inst_def  # todo move to base class
-        self._calibration_group = calibration_group
-
         u_ch = inst_def.get_channel(qubits, ControlChannel)
 
         # Create a list of amp parameters on the control channel.
         schedule = inst_def.get_schedule(cr_name, qubits)
         u_ch_inst = schedule.filter(channels=[u_ch], instruction_types=Play).instructions
-        self._parameter_names = []
+        p_names = []
         for instruction in u_ch_inst:
             pulse_name, channel, scope_id = instruction[1].name.split('.')
             p_name = inst_def.pulse_parameter_table.get_full_name('amp', pulse_name, u_ch.name,
                                                                   scope_id, calibration_group)
+            p_names.append(p_name)
 
-            self._parameter_names.append(p_name)
-
-        qc = inst_def.get_circuit(cr_name, qubits, free_parameter_names=self._parameter_names)
-        qc.name = self._parameter_names[0]
+        qc = inst_def.get_circuit(cr_name, qubits, free_parameter_names=p_names)
+        qc.name = p_names[0]
 
         # Create a template in which amplitude(cr90m) = -amplitude(cr90p)
         u_pulse_names = []
-        for name in self._parameter_names:
+        for name in p_names:
             u_pulse_names.append(name.split('.')[0])
 
         if 'cr90m' in u_pulse_names and 'cr90p' in u_pulse_names and len(u_pulse_names) == 2:
@@ -91,19 +85,19 @@ class RoughCRAmplitude(BaseCalibrationExperiment):
             else:
                 qc.assign_parameters({params[0]: -params[1]}, inplace=True)
 
+        name = 'cr_amp'
         generator = CircuitBasedGenerator(
-            name=self._name,
-            qubits=qubits,
+            name=name,
+            qubits=list(qubits),
             template_circuit=qc,
             values_to_scan=amp_vals,
             ref_frequency=freq01)
 
         # setup analysis
-        if analysis_class is None:
-            analysis_class = CosinusoidalFit(name=generator.name,
-                                             data_processing_steps=data_processing)
+        if analysis is None:
+            analysis = CosinusoidalFit(name=name, data_processing_steps=data_processing)
 
-        super().__init__(generator=generator, analysis=analysis_class, job=job)
+        super().__init__(name, inst_def, p_names, analysis, generator, calibration_group, job)
 
     def update_calibrations(self):
         """
@@ -117,7 +111,7 @@ class RoughCRAmplitude(BaseCalibrationExperiment):
         if len(self._parameter_names) == 1:
             pulse_name, channel, scope_id, param_name = self._parameter_names[0].split('.')
             tag = self._parameter_names[0] + '.' + self._name
-            value = self.analysis.get_fit_function_period_fraction(0.5, self._qubits[1], tag)
+            value = self.analysis.get_fit_function_period_fraction(0.5, self.qubits[1], tag)
 
             self._inst_def.pulse_parameter_table.set_parameter(
                 parameter_name=param_name,
@@ -134,10 +128,10 @@ class RoughCRAmplitude(BaseCalibrationExperiment):
                 pulse_name, channel, scope_id, param_name = full_name.split('.')
                 if pulse_name[-1] == 'p':
                     tag = pulse_name + '.' + self._name
-                    value = self.analysis.get_fit_function_period_fraction(0.5, self._qubits[1], tag)
+                    value = self.analysis.get_fit_function_period_fraction(0.5, self.qubits[1], tag)
                 else:
                     tag = pulse_name.replace('m', 'p') + '.' + self._name
-                    value = -self.analysis.get_fit_function_period_fraction(0.5, self._qubits[1], tag)
+                    value = -self.analysis.get_fit_function_period_fraction(0.5, self.qubits[1], tag)
 
                 self._inst_def.pulse_parameter_table.set_parameter(
                     parameter_name=param_name,

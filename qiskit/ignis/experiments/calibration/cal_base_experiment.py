@@ -13,19 +13,48 @@
 """Qiskit Ignis calibration module."""
 
 import uuid
-from typing import List, Dict
+from typing import List, Dict, Optional, Tuple
 
 from qiskit import transpile, schedule, assemble, pulse, QuantumCircuit
 from qiskit.circuit.measure import Measure
 from qiskit.providers import BaseBackend, BaseJob
 
 from qiskit.ignis.experiments.base import Experiment
+from qiskit.ignis.experiments.calibration.instruction_data import InstructionsDefinition
+from qiskit.ignis.experiments.calibration.cal_base_analysis import BaseCalibrationAnalysis
+from qiskit.ignis.experiments.base import Generator
 
 
 class BaseCalibrationExperiment(Experiment):
     """
     Class for a calibration experiments.
     """
+
+    def __init__(self, name: str, inst_def: InstructionsDefinition, parameter_names: List[str],
+                 analysis: BaseCalibrationAnalysis, generator: Generator,
+                 calibration_group: Optional[str] = 'default', job: Optional = None):
+        """
+        Args:
+            name: name of the experiment.
+            inst_def: the InstructionsDefinition holding the pulse parameters and gate
+                definitions.
+            parameter_names: List of the names of the pulse parameters involved in the calibrations.
+            analysis: Entity that will analyze the data.
+            generator: Entity to generate the circuits with calibrations.
+            calibration_group: Calibration group in the pulse parameter table in inst_def to use.
+            job: Job from which to get the results.
+        """
+        self._name = name
+        self._inst_def = inst_def
+        self._calibration_group = calibration_group
+        self._parameter_names = parameter_names
+
+        super().__init__(generator=generator, analysis=analysis, job=job)
+
+    @property
+    def qubits(self):
+        """Qubits of the experiment are stored in the generator."""
+        return tuple(self.generator.qubits)
 
     def schedules(self, backend: BaseBackend) -> List[pulse.Schedule]:
         """Return pulse schedules to submit."""
