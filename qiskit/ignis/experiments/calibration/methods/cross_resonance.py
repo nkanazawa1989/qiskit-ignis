@@ -22,7 +22,7 @@ from qiskit.ignis.experiments.calibration.instruction_data import InstructionsDe
 from qiskit.ignis.experiments.calibration.cal_base_experiment import BaseCalibrationExperiment
 from qiskit.ignis.experiments.calibration.analysis.trigonometric import CosinusoidalFit
 
-from qiskit.pulse import ControlChannel
+from qiskit.pulse import ControlChannel, Play
 
 
 class RoughCRAmplitude(BaseCalibrationExperiment):
@@ -64,8 +64,9 @@ class RoughCRAmplitude(BaseCalibrationExperiment):
 
         u_ch = inst_def.get_channel(qubits, ControlChannel)
 
-        # Create a list of amp parameters on the control channel and default to global.
-        u_ch_inst = inst_def.get_schedule(cr_name, qubits).filter(channels=[u_ch]).instructions
+        # Create a list of amp parameters on the control channel.
+        schedule = inst_def.get_schedule(cr_name, qubits)
+        u_ch_inst = schedule.filter(channels=[u_ch], instruction_types=Play).instructions
         self._parameter_names = []
         for instruction in u_ch_inst:
             pulse_name, channel, scope_id = instruction[1].name.split('.')
