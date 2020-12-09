@@ -106,8 +106,13 @@ class RoughCRAmplitude(BaseCalibrationExperiment):
 
     def update_calibrations(self):
         """
-        Updates the amplitude of the cr pulses. This can handle cr90p, cr90m.
+        Updates the amplitude of the cr pulses. This can handle echoed (ECR) and non-echoed
+        (CR) cross-resonance gates. Single-pulse CR gates have one amplitude parameter
+        while ECR gate have two coupled amplitude parameters: a pulse rotating in the plus
+        direction and a pulse rotating around in the minus direction.
         """
+
+        # Single-pulse cross-resonance gate.
         if len(self._parameter_names) == 1:
             pulse_name, channel, scope_id, param_name = self._parameter_names[0].split('.')
             tag = self._parameter_names[0] + '.' + self._name
@@ -122,6 +127,7 @@ class RoughCRAmplitude(BaseCalibrationExperiment):
                 calibration_group=self._calibration_group
             )
 
+        # Echoed cross-resonance gate.
         if len(self._parameter_names) == 2:
             for full_name in self._parameter_names:
                 pulse_name, channel, scope_id, param_name = full_name.split('.')
