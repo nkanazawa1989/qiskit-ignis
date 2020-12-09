@@ -74,9 +74,7 @@ class RoughCRAmplitude(BaseCalibrationExperiment):
 
             self._parameter_names.append(p_name)
 
-        qc = inst_def.get_circuit('xp', (qubits[0], ))
-        qc.compose(inst_def.get_circuit(cr_name, qubits,
-                                        free_parameter_names=self._parameter_names), inplace=True)
+        qc = inst_def.get_circuit(cr_name, qubits, free_parameter_names=self._parameter_names)
         qc.name = self._parameter_names[0]
 
         # Create a template in which amplitude(cr90m) = -amplitude(cr90p)
