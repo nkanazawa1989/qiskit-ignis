@@ -12,7 +12,9 @@
 
 """Data source to generate schedule."""
 
-from typing import Optional, Callable, List
+import numpy as np
+
+from typing import Optional, Callable, List, Dict
 
 from qiskit.pulse import DriveChannel
 
@@ -84,6 +86,7 @@ class RoughAmplitudeCalibration(BaseCalibrationExperiment):
                  data_processing: DataProcessingSteps,
                  amp_vals: List,
                  gate_name: str,
+                 update_pulses: Optional[Dict[str, float]] = None,
                  calibration_group: Optional[str] = 'default',
                  analysis: Optional[BaseCalibrationAnalysis] = None,
                  job: Optional = None):
@@ -96,6 +99,10 @@ class RoughAmplitudeCalibration(BaseCalibrationExperiment):
             amp_vals: Amplitude values to scan in the calibration.
             gate_name: Pulse name in the database entry to provide parameter set to
                 construct pulse schedule to calibrate. By default pi pulse parameter is used.
+            update_pulses: A dict of pulses and their rotation angle to update in the pulse
+                parameter table based on the fit. E.g. {'xp': pi, 'x90p': pi/2} implies that the
+                amplitudes of the pi-rotation xp and the pi-half-rotation x90p will be updated.
+                Default is {gate_name}: pi}.
             analysis: Analysis class used.
             job: Optional job id to retrieve past experiments.
         """
@@ -104,6 +111,11 @@ class RoughAmplitudeCalibration(BaseCalibrationExperiment):
         # this value is stored in another relational database.
         # something like qubit property table where f01, anharmonicity, T1, T2, etc... exist.
         freq01 = None
+
+        if update_pulses is None:
+            self.update_pulses = {gate_name: np.pi}  # default to a pi rotation
+        else:
+            self.update_pulses = dict(update_pulses)
 
         scope_id = inst_def.get_scope_id(gate_name, (qubit,))
         ch_name = inst_def.get_channel((qubit,), DriveChannel).name
@@ -120,7 +132,6 @@ class RoughAmplitudeCalibration(BaseCalibrationExperiment):
             values_to_scan=amp_vals,
             ref_frequency=freq01)
 
-        # setup analysis
         if analysis is None:
             analysis = CosinusoidalFit(name=name, data_processing_steps=data_processing)
 
@@ -130,15 +141,16 @@ class RoughAmplitudeCalibration(BaseCalibrationExperiment):
         """
         Updates the amplitude of the xp pulse.
         """
-        pulse_name, channel, scope_id, param_name = self._parameter_names[0].split('.')
-        tag = 'circuit.'+self._name
-        value = get_period_fraction(self.analysis, 0.5, self.qubits[0], tag)
+        for pulse_name, angle in self.update_pulses.items():
+            _, channel, scope_id, param_name = self._parameter_names[0].split('.')
+            tag = 'circuit.'+self._name
+            value = get_period_fraction(self.analysis, angle, self.qubits[0], tag)
 
-        self._inst_def.pulse_parameter_table.set_parameter(
-            parameter_name=param_name,
-            pulse_name=pulse_name,
-            channel=channel,
-            scope_id=scope_id,
-            value=value,
-            calibration_group=self._calibration_group
-        )
+            self._inst_def.pulse_parameter_table.set_parameter(
+                parameter_name=param_name,
+                pulse_name=pulse_name,
+                channel=channel,
+                scope_id=scope_id,
+                value=value,
+                calibration_group=self._calibration_group
+            )

@@ -12,6 +12,7 @@
 
 """Data source to generate schedule."""
 
+import numpy as np
 
 from typing import Optional, List, Tuple
 
@@ -128,10 +129,10 @@ class RoughCRAmplitude(BaseCalibrationExperiment):
                 pulse_name, channel, scope_id, param_name = full_name.split('.')
                 if pulse_name[-1] == 'p':
                     tag = pulse_name + '.' + self._name
-                    value = get_period_fraction(self.analysis, 0.5, self.qubits[1], tag)
+                    value = get_period_fraction(self.analysis, np.pi, self.qubits[1], tag)
                 else:
                     tag = pulse_name.replace('m', 'p') + '.' + self._name
-                    value = -get_period_fraction(self.analysis, 0.5, self.qubits[1], tag)
+                    value = -get_period_fraction(self.analysis, np.pi, self.qubits[1], tag)
 
                 self._inst_def.pulse_parameter_table.set_parameter(
                     parameter_name=param_name,

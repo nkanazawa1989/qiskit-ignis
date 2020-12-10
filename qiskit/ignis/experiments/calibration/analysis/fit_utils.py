@@ -12,25 +12,27 @@
 
 """Helper methods to extract data from the fits."""
 
+import numpy as np
+
 from qiskit.ignis.experiments.calibration.cal_base_analysis import BaseCalibrationAnalysis
 from qiskit.ignis.experiments.calibration.analysis.trigonometric import CosinusoidalFit
 
 
-def get_period_fraction(analysis: BaseCalibrationAnalysis, period_fraction: float,
+def get_period_fraction(analysis: BaseCalibrationAnalysis, angle: float,
                         qubit: int, tag: str) -> float:
     """
-    Returns the x location corresponding to a fraction of a full oscillation. E.g.
-    if fraction = 0.5 and the function function is cos(2 pi a x) then return 1/2a.
+    Returns the x location corresponding to a given rotation angle. E.g.
+    if angle = pi and the function function is cos(2 pi a x) then return pi/2*pi*a.
     Not all analysis routines will implement this.
 
     Args:
         analysis: The analysis routing from which to retrieve a periodicity.
-        period_fraction: The fraction of the period.
+        angle: The desired rotation angle.
         qubit: the qubit for which the analysis was carried out.
         tag: the key used to identify the fit in self.result.
     """
 
     if isinstance(analysis, CosinusoidalFit):
-        return period_fraction / analysis.result[qubit][tag].fitvals[1]
+        return angle / (2*np.pi*analysis.result[qubit][tag].fitvals[1])
 
     raise NotImplementedError
