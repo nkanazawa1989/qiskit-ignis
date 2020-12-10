@@ -137,7 +137,7 @@ class BaseCalibrationExperiment(Experiment):
     def run_analysis(self, update_calibrations: bool = False, **params):
         """
         Args:
-              update_calibrations: If true the analysis will run and update any parameters in the DB.
+              update_calibrations: running the analysis will update parameters in the DB if True.
         """
         super().run_analysis(**params)
 
@@ -145,5 +145,8 @@ class BaseCalibrationExperiment(Experiment):
             self.update_calibrations()
 
     def update_calibrations(self):
-        """Update any parameters in the DB."""
+        """
+        Update parameters in the pulse parameter table. Child classes will need to implement
+        this method to update parameters.
+        """
         pass
