@@ -21,6 +21,7 @@ from qiskit.ignis.experiments.calibration.cal_base_analysis import BaseCalibrati
 from qiskit.ignis.experiments.calibration.instruction_data import InstructionsDefinition
 from qiskit.ignis.experiments.calibration.cal_base_experiment import BaseCalibrationExperiment
 from qiskit.ignis.experiments.calibration.analysis.trigonometric import CosinusoidalFit
+from qiskit.ignis.experiments.calibration.analysis.fit_utils import get_period_fraction
 
 from qiskit.pulse import ControlChannel, Play
 
@@ -50,7 +51,6 @@ class RoughCRAmplitude(BaseCalibrationExperiment):
             job: Optional job id to retrieve past experiments.
             cr_name: Name of the cross-resonance gate from the instructions definition to use.
         """
-        # todo calibration_group is not handled yet
         # todo get qubit property from other database.
         # channel ref frequency is different from pulse sideband and thus
         # this value is stored in another relational database.
@@ -128,10 +128,10 @@ class RoughCRAmplitude(BaseCalibrationExperiment):
                 pulse_name, channel, scope_id, param_name = full_name.split('.')
                 if pulse_name[-1] == 'p':
                     tag = pulse_name + '.' + self._name
-                    value = self.analysis.get_fit_function_period_fraction(0.5, self.qubits[1], tag)
+                    value = get_period_fraction(self.analysis, 0.5, self.qubits[1], tag)
                 else:
                     tag = pulse_name.replace('m', 'p') + '.' + self._name
-                    value = -self.analysis.get_fit_function_period_fraction(0.5, self.qubits[1], tag)
+                    value = -get_period_fraction(self.analysis, 0.5, self.qubits[1], tag)
 
                 self._inst_def.pulse_parameter_table.set_parameter(
                     parameter_name=param_name,

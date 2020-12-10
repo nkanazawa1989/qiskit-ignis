@@ -23,6 +23,7 @@ from qiskit.ignis.experiments.calibration.instruction_data import InstructionsDe
 from qiskit.ignis.experiments.calibration.cal_base_experiment import BaseCalibrationExperiment
 from qiskit.ignis.experiments.calibration.analysis.peak import GaussianFit
 from qiskit.ignis.experiments.calibration.analysis.trigonometric import CosinusoidalFit
+from qiskit.ignis.experiments.calibration.analysis.fit_utils import get_period_fraction
 
 
 class RoughSpectroscopy(BaseCalibrationExperiment):
@@ -33,19 +34,19 @@ class RoughSpectroscopy(BaseCalibrationExperiment):
                  qubit: int,
                  data_processing: DataProcessingSteps,
                  freq_vals: List,
-                 analysis_class: Optional[BaseCalibrationAnalysis] = None,
+                 analysis: Optional[BaseCalibrationAnalysis] = None,
                  job: Optional = None,
                  pulse_envelope: Optional[Callable] = None,
                  pulse_name: Optional[str] = ''):
         """Create new spectroscopy experiment.
 
         Args:
-            table: The table of pulse parameters.
+            inst_def: The class that defines the instructions for this calibration.
             qubit: Qubit on which to run the calibration.
             data_processing: Steps used to process the data from the Result.
             freq_vals: Frequency values to scan in the calibration.
-            analysis_class: Analysis class used.
-            job: Optional job id to retrive past expereiments.
+            analysis: Analysis class used.
+            job: Optional job id to retrieve past experiments.
             pulse_envelope: Name of the pulse function used to generate the
                 pulse schedule. If not specified, the default pulse shape of
                 :py:class:`SinglePulseGenerator` is used.
@@ -59,20 +60,19 @@ class RoughSpectroscopy(BaseCalibrationExperiment):
         # something like qubit property table where f01, anharmonicity, T1, T2, etc... exist.
         freq01 = 0.0
 
+        name = 'spectroscopy'
         generator = CircuitBasedGenerator(
-            name='spectroscopy',
-            qubit=qubit,
+            name=name,
+            qubits=[qubit],
             template_circuit=inst_def.get_circuit(pulse_name, (qubit, )),
             values_to_scan=freq_vals,
             ref_frequency=freq01)
 
         # setup analysis
-        if analysis_class is None:
-            analysis_class = GaussianFit(name=generator.name)
+        if analysis is None:
+            analysis = GaussianFit(name=name)
 
-        super().__init__(generator=generator,
-                         analysis=analysis_class,
-                         job=job)
+        super().__init__(name, inst_def, [], analysis, generator, job)
 
 
 class RoughAmplitudeCalibration(BaseCalibrationExperiment):
@@ -132,7 +132,7 @@ class RoughAmplitudeCalibration(BaseCalibrationExperiment):
         """
         pulse_name, channel, scope_id, param_name = self._parameter_names[0].split('.')
         tag = 'circuit.'+self._name
-        value = self.analysis.get_fit_function_period_fraction(0.5, self.qubits[0], tag)
+        value = get_period_fraction(self.analysis, 0.5, self.qubits[0], tag)
 
         self._inst_def.pulse_parameter_table.set_parameter(
             parameter_name=param_name,
