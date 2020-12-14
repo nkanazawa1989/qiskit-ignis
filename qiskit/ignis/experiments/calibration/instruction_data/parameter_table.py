@@ -18,6 +18,7 @@
 from typing import Dict, Union, Iterable, Optional, List, Tuple, Type
 
 import pandas as pd
+import re
 
 from qiskit.ignis.experiments.calibration import types
 from qiskit.ignis.experiments.calibration.exceptions import CalExpError
@@ -104,6 +105,56 @@ class PulseParameterTable:
             scope_id=scope_id,
             name=name,
             validation=validation)
+
+    def get_full_name(self, parameter_name: str, pulse_name: str, channel: str,
+                      scope_id: Optional[str] = 'global',
+                      calibration_group: Optional[str] = 'default') -> str:
+        """
+        Get full parameter name properly manages the scope of the parameter.
+
+        Returns:
+            parameter_name: in format pulse_name.channel.scope_id.parameter_name
+        """
+        matched = self._find_data(name=parameter_name,
+                                  pulse_name=pulse_name,
+                                  channel=channel,
+                                  calibration_group=calibration_group,
+                                  scope_id=scope_id)
+
+        if len(matched) == 0 and scope_id != 'global':
+            scope_id = 'global'
+            matched = self._find_data(name=parameter_name,
+                                      pulse_name=pulse_name,
+                                      channel=channel,
+                                      calibration_group=calibration_group,
+                                      scope_id=scope_id)
+
+        full_name = '%s.%s.%s.%s' % (pulse_name, channel, scope_id, parameter_name)
+
+        if len(matched) == 0:
+            raise CalExpError('Could not find parameter %s.' % full_name)
+
+        return full_name
+
+    @staticmethod
+    def split_full_name(param_name: str) -> Dict[str, str]:
+        """
+        Splits the full name of the given parameter into four components
+        name pulse, channel name, scope, parameter name. A valid full name
+        has the format pulse_name.channel.scope_id.parameter_name.
+        """
+        name_regex = r'(?P<pulse>(\w+)).(?P<chan>([a-zA-Z]+)(\d+)).(?P<scope>(\w+)).(?P<name>(\w+))'
+
+        matched = re.match(name_regex, param_name)
+        if matched:
+            return {
+                'name': matched.group('name'),
+                'channel': matched.group('chan'),
+                'pulse_name': matched.group('pulse'),
+                'scope_id': matched.group('scope')
+            }
+
+        raise Exception('Invalid parameter name %s' % param_name)
 
     def get_parameter(
             self,
@@ -269,7 +320,7 @@ class PulseParameterTable:
             pulse_name: str,
             channel: str,
             pulse_shape: str,
-            scope_id: Optional[str] = None,
+            scope_id: Optional[str] = 'global',
             calibration_group: Optional[str] = 'default'
     ):
         """A special method to save pulse shape in the database.
@@ -287,8 +338,6 @@ class PulseParameterTable:
             scope_id: The scope id of pulse where pulse belongs to.
             calibration_group: The name of calibration.
         """
-        scope_id = scope_id or 'global'
-
         # duplication check
         existing_entry = self._find_data(
             channel=channel,

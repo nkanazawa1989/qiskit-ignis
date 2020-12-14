@@ -13,51 +13,9 @@
 """Utilities for database."""
 
 import inspect
-import re
-from typing import Dict, List
+from typing import List
 
 from qiskit import pulse, circuit
-
-
-def composite_param_name(name: str,
-                         channel: str,
-                         pulse_name: str,
-                         scope_id: str) -> str:
-    """Embed pulse information to parameter name.
-
-    Args:
-        name: Name of parameter.
-        channel: Name of channel that the pulse associated with the parameter belongs to.
-        pulse_name: Name of the pulse associated with the parameter.
-        scope_id: Unique string representing a scope of this pulse.
-
-    Returns:
-          Name of parameter in local scope.
-    """
-    return '{}.{}.{}.{}'.format(pulse_name, channel, scope_id, name)
-
-
-def split_param_name(param_name: str) -> Dict[str, str]:
-    """Remove pulse information from parameter name.
-
-    Args:
-        param_name: Scoped name of parameter.
-
-    Returns:
-          Name of parameter with scope.
-    """
-    name_regex = r'(?P<pulse>(\w+)).(?P<chan>([a-zA-Z]+)(\d+)).(?P<scope>(\w+)).(?P<name>(\w+))'
-
-    matched = re.match(name_regex, param_name)
-    if matched:
-        return {
-            'name': matched.group('name'),
-            'channel': matched.group('chan'),
-            'pulse_name': matched.group('pulse'),
-            'scope_id': matched.group('scope')
-        }
-
-    raise Exception('Invalid parameter name {pname}'.format(pname=param_name))
 
 
 def get_pulse_parameters(pulse_shape: pulse.ParametricPulse) -> List[str]:

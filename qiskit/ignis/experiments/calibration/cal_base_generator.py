@@ -52,7 +52,7 @@ class CircuitBasedGenerator(Generator):
         self._template_qcs = [template_circuit]
 
         if not self._is_1d_scan():
-            raise CalExpError('Generator is a 1D scan. Too many free parameters.')
+            raise CalExpError('Generator is a 1D scan. Free parameters: {}.'.format(', '.join(map(str, self.parameters))))
 
     def _is_1d_scan(self) -> bool:
         """Restrict this class to 1D scans."""
