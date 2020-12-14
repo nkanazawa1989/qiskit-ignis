@@ -14,7 +14,7 @@
 
 import numpy as np
 
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict
 
 from qiskit.ignis.experiments.calibration import CircuitBasedGenerator
 from qiskit.ignis.experiments.calibration.data_processing import DataProcessingSteps
@@ -35,6 +35,7 @@ class RoughCRAmplitude(BaseCalibrationExperiment):
                  qubits: Tuple[int, int],
                  data_processing: DataProcessingSteps,
                  amp_vals: List,
+                 update_pulses: Optional[Dict[str, float]] = None,
                  cr_name: Optional[str] = 'cr',
                  calibration_group: Optional[str] = 'default',
                  analysis: Optional[BaseCalibrationAnalysis] = None,
@@ -60,6 +61,11 @@ class RoughCRAmplitude(BaseCalibrationExperiment):
 
         u_ch = inst_def.get_channel(qubits, ControlChannel)
 
+        if update_pulses is None:
+            self.update_pulses = {'cr90p': np.pi/2, 'cr90m': -np.pi/2}
+        else:
+            self.update_pulses = dict(update_pulses)
+
         # Create a list of amp parameters on the control channel.
         schedule = inst_def.get_schedule(cr_name, qubits)
         u_ch_inst = schedule.filter(channels=[u_ch], instruction_types=Play).instructions
@@ -71,7 +77,7 @@ class RoughCRAmplitude(BaseCalibrationExperiment):
             p_names.append(p_name)
 
         qc = inst_def.get_circuit(cr_name, qubits, free_parameter_names=p_names)
-        qc.name = p_names[0]
+        qc.name = 'circuit'
 
         # Create a template in which amplitude(cr90m) = -amplitude(cr90p)
         u_pulse_names = []
@@ -80,7 +86,6 @@ class RoughCRAmplitude(BaseCalibrationExperiment):
 
         if 'cr90m' in u_pulse_names and 'cr90p' in u_pulse_names and len(u_pulse_names) == 2:
             params = list(qc.parameters)
-            qc.name = 'cr90p'
             if 'cr90p' in params[0].name:
                 qc.assign_parameters({params[1]: -params[0]}, inplace=True)
             else:
@@ -108,11 +113,10 @@ class RoughCRAmplitude(BaseCalibrationExperiment):
         direction and a pulse rotating around in the minus direction.
         """
 
-        # Single-pulse cross-resonance gate.
-        if len(self._parameter_names) == 1:
-            pulse_name, channel, scope_id, param_name = self._parameter_names[0].split('.')
-            tag = self._parameter_names[0] + '.' + self._name
-            value = self.analysis.get_fit_function_period_fraction(0.5, self.qubits[1], tag)
+        for pulse_name, angle in self.update_pulses.items():
+            _, channel, scope_id, param_name = self._parameter_names[0].split('.')
+            tag = 'circuit.'+self._name
+            value = get_period_fraction(self.analysis, angle, self.qubits[1], tag)
 
             self._inst_def.pulse_parameter_table.set_parameter(
                 parameter_name=param_name,
@@ -122,23 +126,3 @@ class RoughCRAmplitude(BaseCalibrationExperiment):
                 value=value,
                 calibration_group=self._calibration_group
             )
-
-        # Echoed cross-resonance gate.
-        if len(self._parameter_names) == 2:
-            for full_name in self._parameter_names:
-                pulse_name, channel, scope_id, param_name = full_name.split('.')
-                if pulse_name[-1] == 'p':
-                    tag = pulse_name + '.' + self._name
-                    value = get_period_fraction(self.analysis, np.pi, self.qubits[1], tag)
-                else:
-                    tag = pulse_name.replace('m', 'p') + '.' + self._name
-                    value = -get_period_fraction(self.analysis, np.pi, self.qubits[1], tag)
-
-                self._inst_def.pulse_parameter_table.set_parameter(
-                    parameter_name=param_name,
-                    pulse_name=pulse_name,
-                    channel=channel,
-                    scope_id=scope_id,
-                    value=value,
-                    calibration_group=self._calibration_group
-                )
